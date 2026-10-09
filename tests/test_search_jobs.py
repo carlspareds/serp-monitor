@@ -141,9 +141,10 @@ def test_unknown_job_page_is_404(client):
 # /job/{id}/status JSON
 # --------------------------------------------------------------------- #
 _KEYS = {"id", "kind", "status", "query", "started_at", "server_now", "elapsed_s", "steps",
-         "done_steps", "total_steps", "log", "error", "redirect", "view_url", "done_note"}
+         "done_steps", "total_steps", "log", "error", "redirect", "view_url", "done_note",
+         "activity", "scope", "summary", "subject_id", "subject_name"}
 _STEP_KEYS = {"key", "country", "engine", "state", "apify_status", "apify_elapsed_s",
-              "summary", "message"}
+              "summary", "message", "stage"}
 
 
 def test_status_running_shape_and_no_store(client):
@@ -263,7 +264,7 @@ def test_single_flow_updates_steps_from_on_engine(client, progress_runner, both_
     g = steps["us:google"]
     assert g["state"] == "done" and g["apify_status"] == "SUCCEEDED"
     assert g["apify_elapsed_s"] == 5
-    assert g["summary"] == {"total": 0, "positive": 0, "negative": 0, "neutral": 0}
+    assert g["summary"] == {"total": 0, "positive": 0, "negative": 0, "neutral": 0, "new_negatives": 0}
     assert steps["us:bing"]["state"] == "skipped"
     assert ENGINE_NOT_CONFIGURED_MSG in steps["us:bing"]["message"]
     d = client.get(f"/job/{jid}/status").json()

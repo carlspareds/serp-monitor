@@ -38,7 +38,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from assistant import cards, harness, suggest, tools
 from assistant.pending import STORE
-from dashboard import deps
+from dashboard import deps, job_status
 from dashboard import session as session_mod
 from database.base import current_subject_id
 from processing import ai_status, llm
@@ -123,6 +123,8 @@ def build_context(request: Request, subject_id: int | None = None) -> tools.Tool
         user=request_user(request), jobs=getattr(main, "jobs", None),
         runner_factory=lambda: sys.modules["dashboard.main"].get_runner(),
         exports_dir=deps.exports_dir,
+        extra={"session": job_status.session_hash(request.cookies.get("sid")
+                                                  or request.cookies.get(_COOKIE))},
     )
 
 
@@ -366,6 +368,8 @@ async def assistant_confirm(request: Request):
     STORE.finish(action, ok, result)
     events = [dict(type="intent", tool=action.tool, **result["intent"])] if result.get("intent") else []
     card = cards.report_card(result) if ok and action.tool == "create_report" else None
+    if ok and action.tool == "start_search":
+        card = cards.job_card(result)
     if card:
         events.append(card)
     return _json({"ok": ok, "already": False, "id": action.id, "message": result.get("message", ""),

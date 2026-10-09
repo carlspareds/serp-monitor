@@ -64,7 +64,7 @@ checks), `open_search` (the New search dialog; operator+), `open_notes`,
 
 | Tool | Confirmation card shows | Executes |
 | --- | --- | --- |
-| `start_search(countries?, engines?, pages?, device?)` | query, countries, engines; estimated Apify cost (average of past runs, or a rough default), time (20-90 s per country × engine), month spend vs budget | Same JobManager + `run_multi_country` path as `POST /search_multi`, with the subject carried into the worker thread; returns the job id and a `/job/<id>` intent |
+| `start_search(countries?, engines?, pages?, device?)` | query, countries, engines; estimated Apify cost (average of past runs, or a rough default), time (20-90 s per country × engine), month spend vs budget | Same JobManager + `run_multi_country` path as `POST /search_multi`, with the subject carried into the worker thread; returns the job id, a quiet `/job/<id>` intent (not auto-opened) and a `job` card; the top-bar chip tracks it |
 | `create_report(kind pdf\|xlsx\|csv, countries?, period?)` | type, countries, period; AI cost note for the PDF summary | Builds the file in `data/exports/`; download at `/assistant/reports/<file>` |
 | `save_note(url, text, status?)` | URL, full text, whether it replaces an existing note | `set_note` (+ `set_note_status`); nothing is sent |
 | `set_result_label(result_id, label)` | result, old → new label | `set_review_verdict` (human verdict) or `set_same_person_verdict` for `not_this_person` |
@@ -246,7 +246,9 @@ Open / Review), `changes` (list_changes: counts, top rows, "Open compare"),
 Negative / Neutral / Not this person, which POST the same audited endpoints as
 the Review dialog with `mode=chat` → JSON `{ok, message, pending}`), `report`
 (list_reports' previous files, or the file a confirmed create_report made:
-Download), `sov` (get_overview: positive/negative/neutral per country).
+Download), `sov` (get_overview: positive/negative/neutral per country), `job`
+(a confirmed start_search, `cards.job_card`: the search's status sentence, a
+progress bar and Open; kept current by `SM.jobs` from `GET /jobs/active`).
 
 Follow-ups (`suggest.follow_ups`): 2-3 next-step chips derived from the
 turn's tool results (e.g. after list_changes with a new negative: "Draft a

@@ -70,6 +70,7 @@ def persist_engine_run(
     engine_run: dict,
     positive_domains: list[str] | None = None,
     negative_domains: list[str] | None = None,
+    on_stage: Callable[[str], None] | None = None,
 ) -> dict:
     """Persists ONE engine run (1.1): classifies, saves run+results and
     runs the post-save chokepoints (severity, lifecycle, evidence) --
@@ -82,9 +83,25 @@ def persist_engine_run(
     (best-effort per engine, see run_multi_country/dashboard.main::
     run_search).
 
-    Returns {"summary": dict, "results": list[dict]} (results ALREADY
-    classified) so the caller can aggregate them into its own view
-    (combined table, summary summed across engines)."""
+    Returns {"summary": dict, "results": list[dict], "ai_note": str,
+    "new_negatives": int} (results ALREADY classified) so the caller can
+    aggregate them into its own view (combined table, summary summed across
+    engines). new_negatives = negatives seen for the first time (evidence
+    captured by capture_new_negatives).
+
+    `on_stage(stage)` (optional, job progress UI) is told what the pipeline
+    is doing: "classify", "same_person" (AI same-name check, only with an AI
+    provider), "save", "severity" (AI, only with a provider), "evidence".
+    Callback failures never break the save."""
+    def stage(name: str) -> None:
+        if on_stage is None:
+            return
+        try:
+            on_stage(name)
+        except Exception:
+            log.exception("search_stage_callback_failed")
+
+    stage("classify")
     results = classify_batch(
         engine_run["results"],
         positive_domains=positive_domains,
@@ -96,12 +113,24 @@ def persist_engine_run(
     # silently returning nothing. One provider routing session per run.
     with llm.session_scope(f"run:{engine_run.get('run_id') or ''}"), \
             ai_status.collect_failures() as ai_failures:
-        return _persist_engine_run(db, engine_run, results, ai_failures)
+        return _persist_engine_run(db, engine_run, results, ai_failures, stage)
 
 
-def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: list[str]) -> dict:
+def _ai_on() -> bool:
+    try:
+        return bool(llm.is_configured())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: list[str],
+                        stage: Callable[[str], None] = lambda _name: None) -> dict:
+    ai_on = _ai_on()
     # 2.3: identity disambiguation BEFORE saving.
+    if ai_on:
+        stage("same_person")
     results = annotate_same_person(results, db)
+    stage("save")
     summary = get_summary(results)
     # FIX 1 item 4 (muted-alerts fix audit): save_run returns the
     # freshly inserted `apify_budget` row (or None) -- Database cannot
@@ -121,6 +150,8 @@ def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: 
     if budget_alert:
         notify_alert(db, budget_alert)
     db.save_results(results, run_id=engine_run["run_id"])
+    if ai_on:
+        stage("severity")
     annotate_severity(db, engine_run["run_id"])  # 2.2, after saving, before lifecycle
     ai_note = ai_skip_note(ai_failures)
     if ai_note:
@@ -131,8 +162,10 @@ def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: 
         except Exception:
             log.exception("search_ai_note_failed")
     update_url_lifecycle(db, engine_run["run_id"])  # 3.1, after saving
-    capture_new_negatives(db, engine_run["run_id"])  # 3.2, after lifecycle
-    return {"summary": summary, "results": results, "ai_note": ai_note}
+    stage("evidence")
+    captured = capture_new_negatives(db, engine_run["run_id"])  # 3.2, after lifecycle
+    return {"summary": summary, "results": results, "ai_note": ai_note,
+            "new_negatives": len(captured or [])}
 
 
 def run_multi_country(
@@ -167,6 +200,8 @@ def run_multi_country(
     on_engine, when the runner supports it), saving, done (info: summary),
     skipped/error (info: message). engine=None with state "error" means
     "every still-open step of this country" (the whole country failed).
+    While saving, `stage` (info) says which part of persist_engine_run runs;
+    the done step's summary carries `new_negatives`.
     """
     outcomes: list[dict] = []
     forward = on_step is not None and accepts_kwarg(runner.search, "on_engine")
@@ -194,6 +229,7 @@ def run_multi_country(
                     on_event(f"{country}: {w} (skipped)")
             agg_summary = {"total": 0, "positive": 0, "negative": 0, "neutral": 0}
             ai_note = ""
+            new_negatives = 0
             for engine_run in outcome["engine_runs"]:
                 if engine_run.get("error"):
                     # already reported above via outcome["warnings"]
@@ -201,19 +237,26 @@ def run_multi_country(
                         on_step(country, engine_run.get("engine"),
                                 failed_engine_state(engine_run), message=engine_run["error"])
                     continue
+                stage_cb = None
                 if on_step:
                     on_step(country, engine_run.get("engine"), "saving")
+
+                    def stage_cb(name, _country=country, _engine=engine_run.get("engine")):
+                        on_step(_country, _engine, "saving", stage=name)
                 out = persist_engine_run(
                     db, engine_run,
                     positive_domains=positive_domains,
                     negative_domains=negative_domains,
+                    on_stage=stage_cb,
                 )
+                new_negatives += out.get("new_negatives", 0)
                 if out.get("ai_note"):
                     ai_note = ai_note or out["ai_note"]
                     if on_event:
                         on_event(f"{country}: {out['ai_note']}")
                 if on_step:
-                    on_step(country, engine_run.get("engine"), "done", summary=out["summary"])
+                    on_step(country, engine_run.get("engine"), "done",
+                            summary={**out["summary"], "new_negatives": out.get("new_negatives", 0)})
                 for k in agg_summary:
                     agg_summary[k] += out["summary"].get(k, 0)
             outcomes.append(
@@ -224,6 +267,7 @@ def run_multi_country(
                     "summary": agg_summary,
                     "error": None,
                     "ai_note": ai_note,
+                    "new_negatives": new_negatives,
                 }
             )
         except ApifyError as e:

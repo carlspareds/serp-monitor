@@ -1,4 +1,5 @@
-"""Runs: the Runs side panel (/ui/runs), one run inside the panel
+"""Runs: the Runs side panel (/ui/runs; "Running now" on top lists the active
+subject's running searches, search_runner.running_now_html), one run inside the panel
 (/ui/run/{id}) and deleting a run (admin, confirmation dialog, PRG + toast).
 The old /runs and /run/{id} pages redirect to /results with the panel open.
 """
@@ -68,9 +69,12 @@ def _delete_form(r: dict) -> str:
 
 
 def runs_panel_html() -> str:
+    from dashboard.routers.search_runner import running_now_html
+
+    running = running_now_html()
     runs = db.list_runs(limit=100)
     if not runs:
-        body = ("<div class='empty'><b>No runs yet.</b><br>Each search you run shows up here.</div>")
+        body = (f"{running}<div class='empty'><b>No runs yet.</b><br>Each search you run shows up here.</div>")
         return ui.overlay("Runs", body)
     items = []
     for r in runs:
@@ -85,7 +89,9 @@ def runs_panel_html() -> str:
             " data-title='Compare runs'>Compare with previous</a>"
             f"{_delete_form(r)}</div></div>"
         )
-    body = (f"<p class='note'>{plural(len(runs), 'run')}, newest first. Open one to see its results.</p>"
+    body = (f"{running}"
+            + ("<h3 class='section-label'>Finished runs</h3>" if running else "")
+            + f"<p class='note'>{plural(len(runs), 'run')}, newest first. Open one to see its results.</p>"
             f"<div class='list'>{''.join(items)}</div>")
     return ui.overlay("Runs", body)
 

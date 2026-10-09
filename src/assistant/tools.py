@@ -912,6 +912,7 @@ def launch_search(ctx: ToolContext, query: str, countries: list[str], engines: l
     the request's ContextVar). Returns the job id."""
     from config.positive_domains import merged_with
     from dashboard.jobs import _MAX_CONCURRENT_JOBS, step_key
+    from dashboard.ui_helpers import subject_label
     from database.base import subject_scope
     from report.multi_country import aggregate_summary, run_multi_country
 
@@ -926,7 +927,9 @@ def launch_search(ctx: ToolContext, query: str, countries: list[str], engines: l
     job_id = jobs.create(
         "multi",
         {"query": query, "countries": countries, "engines": engines, "device": device,
-         "via": "assistant", "subject_id": sid},
+         "via": "assistant", "subject_id": sid,
+         "subject_name": subject_label(db.current_subject() or {"query": query}),
+         "started_by": ctx.user or "local", "session": ctx.extra.get("session", "")},
         steps=[(c, e) for c in countries for e in engines],
     )
 
@@ -964,8 +967,11 @@ def exec_start_search(ctx: ToolContext, args: dict) -> dict:
                        f"{', '.join(c.upper() for c in prep['countries'])}. "
                        "You can follow it live; results land in Runs when it finishes.",
             "job_id": job_id,
+            "title": f"Search for {query}",
+            # quiet: the panel shows a live job card (assistant.cards.job_card)
+            # with an Open button instead of opening the progress panel.
             "intent": {"target": "job", "url": f"/job/{job_id}", "label": "Search progress",
-                       "params": {"job_id": job_id}},
+                       "params": {"job_id": job_id}, "quiet": True},
             "resource": ("job", job_id)}
 
 

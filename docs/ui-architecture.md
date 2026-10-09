@@ -13,7 +13,9 @@ extends `templates/base.html` (Jinja pages); both use `ui_helpers.shell()`:
   (popover `/ui/switcher`), "Find in stored results" (`/search-text`),
   Assistant button (`data-assistant-toggle`: `SM.assistant`, below; the
   fragment `/assistant/panel` is loaded into `<aside id="assistant-panel">`),
-  alerts bell (popover `/ui/alerts`), account menu (`<template id="acct-menu">`).
+  background-search chip (`#jobchip`, `nav.render_jobs_chip`; see *Background
+  searches* below), alerts bell (popover `/ui/alerts`), account menu
+  (`<template id="acct-menu">`).
 - **Rail** (`nav.render_rail`): exactly three items, Overview `/`, Results
   `/results`, Settings `/settings`. On phones (≤640px) it becomes a bottom tab
   bar. Pages still reachable by URL highlight the item they belong to
@@ -42,8 +44,9 @@ SM.openModal(src, {wide, title})      // centred; bottom sheet on phones
 SM.openPanel(src, {target, title})    // right side panel; target = persistent element id
 SM.popover(anchor, src, {className})  // anchored menu
 SM.close([el]); SM.closeAll(); SM.reload([el])
-SM.toast(message, 'ok' | 'error' | 'info')
+SM.toast(message, 'ok' | 'error' | 'info', {action, onAction})  // optional action button
 SM.load(url)                          // fetch a fragment (sends X-SM-Fragment: 1)
+SM.jobs.refresh()                     // re-read GET /jobs/active (top-bar chip)
 ```
 
 `src` is a URL, an HTML string (`"<..."`) or a template id (`"#id"`). Focus is
@@ -148,10 +151,10 @@ validation errors inside the modal (answer them with the overlay HTML and status
 |---|---|---|---|
 | `/results` | page | `results` | filters: `country`, `date`, `classification`, `sort_by`, `order`, `include_homonyms`, `min_severity`, `has_note`, `new_only`, `engine`, `device`; row menus are `<template id='rm-N'>` popovers |
 | `/ui/search` | modal | `search_runner` | `?subject=`; posts to `/search_multi` with `subject_id`; answer `X-SM-Panel: /ui/job/<id>` |
-| `/ui/job/{id}` | panel | `search_runner` | live progress (app.js `initJob`, polls `/job/{id}/status`); "View results" = `view_url` (switches subject) |
+| `/ui/job/{id}` | panel | `search_runner` | live progress (app.js `initJob`, polls `/job/{id}/status`): one status box (activity sentence, elapsed, progress bar, "Countries: … · Engines: …"), per-step list in a collapsed Details (open when a step failed); footer "Run in background" / "View results" = `view_url` (switches subject) / "Back to New search" on error |
 | `/ui/review` | modal | `review` | one result at a time, `done`/`total`/`skip` state; `?id=` = "Change label" for one result |
 | `/ui/compare` | modal | `diff` | `a` (older), `b` (newer), `country`; swaps reversed runs |
-| `/ui/runs`, `/ui/run/{id}` | panel | `runs` | delete: admin only, `POST /run/{id}/delete` |
+| `/ui/runs`, `/ui/run/{id}` | panel | `runs` | "Running now" on top (`search_runner.running_now_html`: the active subject's running jobs, each `data-panel='/ui/job/{id}'`); delete: admin only, `POST /run/{id}/delete` |
 | `/ui/timeline` | panel | `timeline` | `?domain=` filters detected events ("Show on timeline") |
 | `/ui/evidence` | panel | `evidence` | `?url_hash=` |
 | `/ui/ai-checks` | modal | `domains` | More → "AI checks…": "Relabel with AI" (`POST /domains/reclassify-ai`) and "Run AI checks" (`POST /ai/annotate`) with the counts waiting now and the caps; disabled, with a link to Settings → AI provider, without a provider; operator+ |
@@ -207,6 +210,48 @@ Forms in panels answer a fetch submit with the refreshed panel plus
 `X-SM-Toast` (so the panel stays usable), and a plain submit with
 Post/Redirect/Get to the deep link of the same panel.
 
+## Background searches
+
+A search is an in-memory job (`dashboard/jobs.py`, `JobManager`): one step
+per country × engine (`pending → launching → running → saving → done |
+skipped | error`); a saving step also carries `stage` (`classify`,
+`same_person`, `save`, `severity`, `evidence`), reported by
+`report.multi_country.persist_engine_run(on_stage=…)`. A job's `meta`
+records the subject (`subject_id`, `subject_name`) and who started it
+(`started_by`, `session` = short hash of the session cookie).
+
+`dashboard/job_status.py` turns a job into ONE plain sentence
+(`activity_sentence`): "Starting search…", "Searching Google in the United
+Kingdom (2 of 6)…", "Waiting for Apify (Google, United Kingdom)… 0:35",
+"Saving results…", "Checking same-name results with AI…", "Done: 7 results in
+3 countries, 1 new negative", "Search failed: <plain error>". Every view uses
+it: the job panel and page, the chip, its popover, Runs → Running now, the
+assistant's job card. It travels as `activity` in the JSON.
+
+| Endpoint | What |
+|---|---|
+| `GET /job/{id}/status` | one job (polled by the open panel every 2 s, 5 s after a minute): steps, `activity`, `summary`, `view_url`… |
+| `GET /jobs/active` | no-store JSON: running jobs, and jobs finished in the last 10 minutes (`ACTIVE_FINISHED_SECONDS`) that this viewer hasn't seen, of the subjects the viewer may see; the active subject's in `jobs`, the others in `other_jobs` (+ `other_count`) |
+| `POST /jobs/{id}/seen` | hides a finished job for this viewer (`user:<name>`, or `local` without sign-in); same-site only (CSRF rule), allowed for read-only accounts. Opening a finished job's panel/page marks it seen too |
+
+Visibility: a viewer sees (and can open) only jobs of subjects they may see
+(`visible_subject_ids`); jobs without a subject stay reachable by id.
+
+Client (`SM.jobs` in app.js): one `GET /jobs/active` on every page load (so
+a search survives reloads and navigation), then every 5 s ONLY while
+something runs (30 s in a hidden tab, backoff on errors). The chip shows
+"Searching… 0:42" (spinner, static under reduced motion), "N searches
+running", "Search finished" (dot) or "Search failed" (danger); its text ticks,
+so state changes are announced by the separate polite live region
+`#jobchip-live`. One job: click opens `/ui/job/{id}`; several: a popover
+lists them. A job that finished unseen gets one toast (remembered in
+`localStorage["sm-jobs-toasted"]`): "Search for <subject> finished: N
+results, M new negatives" + View results (switches subject), or an error
+toast + Details. Elements with `data-active-job="<id>"` (Running now, the
+popover, the assistant's job card) are updated from the same data. The
+assistant's confirmed `start_search` returns a quiet `job` intent (no
+auto-opened panel) and a `job` card (`assistant.cards.job_card`) with Open.
+
 ## Post/Redirect/Get
 
 Every POST redirects back with `redirect_with_flash(url, message, kind)`
@@ -220,7 +265,8 @@ rejected input. A secret that must be shown once (a new API key) goes through
 ## Errors
 
 Browser requests get HTML error pages in the app layout (404, 403, 422, 500;
-`main.error_response`). `/api/*`, `/health` and `/job/*/status` keep JSON.
+`main.error_response`). `/api/*`, `/health`, `/jobs/*` and `/job/*/status`
+keep JSON.
 
 ## Settings
 

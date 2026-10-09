@@ -114,7 +114,8 @@ def render_rail(active_path: str) -> str:
 def render_topbar(project: str = "", subject: str = "", alerts: int = 0,
                   username: str = "", auth: bool = False, switcher: bool = True) -> str:
     """Brand, Project ▸ Subject switcher, stored-results search, Assistant,
-    alerts bell and account menu. The popovers' contents are server-rendered
+    background-searches chip (render_jobs_chip), alerts bell and account
+    menu. The popovers' contents are server-rendered
     fragments loaded on demand (/ui/switcher, /ui/alerts); the account menu is
     a <template> in the page (no request needed)."""
     bell_badge = f"<span class='dotbadge' data-alerts-count>{alerts}</span>" if alerts else ""
@@ -139,6 +140,7 @@ def render_topbar(project: str = "", subject: str = "", alerts: int = 0,
         " data-panel-target='assistant-panel' aria-controls='assistant-panel' aria-expanded='false'"
         " title='Assistant (/ or Ctrl+K)'>"
         f"{icon('spark')}<span class='lbl'>Assistant</span></button>"
+        f"{render_jobs_chip()}"
         "<button type='button' class='iconbtn' id='bell' aria-haspopup='dialog' aria-expanded='false'"
         f" data-popover='/ui/alerts' data-popover-class='alerts-pop' aria-label='{bell_label}'>"
         f"{icon('alerts')}{bell_badge}</button>"
@@ -147,6 +149,23 @@ def render_topbar(project: str = "", subject: str = "", alerts: int = 0,
         "</header>"
         f"{render_account_menu(username, auth)}"
     )
+
+
+def render_jobs_chip() -> str:
+    """Background searches chip, next to the bell. Hidden until app.js
+    (SM.jobs) finds running or finished-unseen searches in GET /jobs/active:
+    "Searching… 0:42" (spinner) / "2 searches running" / "Search finished"
+    (dot) / "Search failed" (danger). One job: opens its panel (/ui/job/{id});
+    several: a popover listing them. The visible text ticks every second, so
+    state changes are announced by the separate polite live region."""
+    return ("<button type='button' class='jobchip' id='jobchip' data-jobs-chip hidden"
+            " aria-haspopup='dialog' aria-expanded='false' aria-describedby='jobchip-live'>"
+            "<span class='jobchip-spin' aria-hidden='true'></span>"
+            "<span class='jobchip-dot' aria-hidden='true'></span>"
+            "<span class='jobchip-text' data-jobs-chip-text>Searching…</span>"
+            "<span class='jobchip-short' aria-hidden='true' data-jobs-chip-short></span></button>"
+            "<span class='sr-only' id='jobchip-live' role='status' aria-live='polite'"
+            " data-jobs-chip-live></span>")
 
 
 def render_account_menu(username: str = "", auth: bool = False) -> str:
@@ -174,6 +193,7 @@ __all__ = [
     "all_paths",
     "icon",
     "render_account_menu",
+    "render_jobs_chip",
     "render_rail",
     "render_topbar",
     "resolve",

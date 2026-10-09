@@ -16,6 +16,7 @@ Run from the project root:
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -209,7 +210,7 @@ _ERROR_COPY = {
 
 def _wants_json(request: Request) -> bool:
     path = request.url.path
-    if path.startswith("/api/") or path == "/health" or (
+    if path.startswith(("/api/", "/jobs/")) or path == "/health" or (
             path.startswith("/job/") and path.endswith("/status")):
         return True
     accept = request.headers.get("accept", "")
@@ -248,6 +249,11 @@ def _admin_only(path: str, method: str) -> bool:
     return method in _UNSAFE_METHODS and path.startswith("/setup/")
 
 
+# POST /jobs/{id}/seen only hides a finished search from the viewer's own
+# top-bar chip: allowed for read-only accounts too.
+_SEEN_PATH = re.compile(r"/jobs/[0-9a-f]{1,32}/seen")
+
+
 async def role_middleware(request: Request, call_next):
     """Role enforcement for logged-in sessions. Requests without a valid
     session pass through untouched: auth_middleware redirects them to
@@ -260,7 +266,7 @@ async def role_middleware(request: Request, call_next):
     if _admin_only(path, request.method) and not is_admin(request):
         return _forbidden("This area is restricted to administrators.")
     if request.method in _UNSAFE_METHODS and not can_write(request) and path not in (
-            "/assistant/chat", "/assistant/stop"):
+            "/assistant/chat", "/assistant/stop") and not _SEEN_PATH.fullmatch(path):
         return _forbidden("Your account is read-only.")
     return await call_next(request)
 

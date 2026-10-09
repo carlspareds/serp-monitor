@@ -365,17 +365,19 @@ def test_eval_model_error_is_an_error_not_a_refusal():
 
 
 # --------------------------------------------------------------------- #
-# 6. Job panel header updates from the status JSON
+# 6. Job panel status updates from the status JSON (the "Step x of y"
+# header became the activity sentence of the single status box)
 # --------------------------------------------------------------------- #
-def test_job_header_step_count_is_live(client):
+def test_job_status_sentence_is_live(client):
     import dashboard.main as main_module
     jobs = main_module.jobs
     jid = jobs.create("single", {"query": "q", "countries": ["us"], "engines": ["google"]},
                       steps=[("us", "google")])
     text = client.get(f"/ui/job/{jid}").text
-    assert "<b data-job-step-count>Step 0 of 1</b>" in text
+    assert "<p class='job-activity' data-job-activity>Starting search…</p>" in text
+    assert "aria-valuetext='0 of 1 steps finished'" in text
     js = (ROOT / "static" / "app.js").read_text()
-    assert "q('[data-job-step-count]')" in js and "'Step ' + done + ' of ' + total" in js
+    assert "q('[data-job-activity]')" in js and "if (d.activity) setActivity(d.activity);" in js
 
 
 # --------------------------------------------------------------------- #

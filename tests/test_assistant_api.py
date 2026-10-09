@@ -274,9 +274,14 @@ def test_start_search_needs_confirm_then_runs_job(client, ai_on, monkeypatch, se
     assert runner.calls == []                                   # nothing ran yet
     done = client.post("/assistant/confirm", json={"id": card["id"]}).json()
     assert done["ok"] is True and done["events"][0]["url"].startswith("/job/")
+    assert done["events"][0]["quiet"] is True                   # no auto-opened panel...
+    job_card = next(e for e in done["events"] if e["type"] == "card")
+    assert job_card["kind"] == "job"                            # ...a live job card instead
+    assert job_card["data"]["job_id"] == done["result"]["job_id"]
     job = _wait_for_job(main_module, done["result"]["job_id"])
     assert job["status"] == "done" and sorted(runner.calls) == ["gb", "us"]
     assert job["meta"]["via"] == "assistant"
+    assert job["meta"]["subject_id"] == 1 and job["meta"]["started_by"] == "local"
     assert json.loads(audit_rows(seeded_db, "assistant_action")[0]["params_json"])["tool"] == "start_search"
 
 

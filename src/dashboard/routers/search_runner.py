@@ -2,6 +2,16 @@
 multi-country searches, and live progress (side panel /ui/job/{id}, full page
 /job/{id}, JSON GET /job/{id}/status polled by static/app.js).
 
+Progress is ONE status box: a plain sentence of what the search is doing
+(dashboard.job_status.activity_sentence), a progress bar, the elapsed time
+and a one-line "Countries: … · Engines: …"; the per-step list lives in a
+collapsed "Details" (opened by itself only when a step failed).
+
+Background searches: GET /jobs/active lists the running and recently
+finished (unseen) jobs of the subjects the viewer may see -- the top-bar
+chip, its popover, the "finished" toast and Runs → "Running now" read it;
+POST /jobs/{id}/seen hides a finished one for this viewer.
+
 Subject scoping: the subject is captured AT SUBMIT TIME (form field
 `subject_id`, validated against the viewer's allowed subjects, default the
 active one) and carried into the worker thread explicitly -- a hand-started
@@ -20,10 +30,11 @@ from apify.actors import ACTORS, CONFIGURED_ENGINES, VALID_DEVICES
 from common.money import run_cost_phrase
 from config.apify_config import lang_for
 from config.positive_domains import merged_with
+from dashboard import job_status as js
 from dashboard import ui
 from dashboard.context import allowed_subjects, is_fragment_request, viewer
 from dashboard.deps import db
-from dashboard.jobs import _MAX_CONCURRENT_JOBS, TERMINAL_STEP_STATES, step_key
+from dashboard.jobs import _MAX_CONCURRENT_JOBS, step_key
 from dashboard.session import audit, is_demo_mode
 from dashboard.ui_helpers import (
     COUNTRIES,
@@ -64,6 +75,38 @@ _STEP_PILL = {
 def _get_main():
     import dashboard.main as main_module
     return main_module
+
+
+def viewer_key() -> str:
+    """Who is looking, for the per-viewer "seen" state of finished jobs:
+    the username, or "local" when sign-in is off (one local user)."""
+    name = viewer().username
+    return f"user:{name}" if name else "local"
+
+
+def owner_meta(request: Request) -> dict:
+    """Who started a job: the user and a short hash of their session."""
+    return {"started_by": viewer().username or "local",
+            "session": js.session_hash(request.cookies.get("sid") or request.cookies.get("asst_sid"))}
+
+
+def visible_subject_ids() -> set:
+    """Subjects whose jobs this viewer may see (the allowed subjects; the
+    active one when the list is empty, as _search_subject does)."""
+    allowed = allowed_subjects()
+    if allowed:
+        return {s["id"] for s in allowed}
+    current = db.current_subject().get("id")
+    return {current} if current else set()
+
+
+def _job_visible(job: dict | None) -> bool:
+    """A job is visible to viewers who may see its subject (jobs recorded
+    without a subject -- older callers -- stay reachable by their id)."""
+    if not job:
+        return False
+    sid = (job.get("meta") or {}).get("subject_id")
+    return sid is None or sid in visible_subject_ids()
 
 
 def _make_on_step(jobs, job_id: str):
@@ -261,7 +304,7 @@ async def run_search(request: Request, query: str = Form(""), country: str = For
         "single",
         {"query": query, "country": country, "countries": [country],
          "engines": valid_engines, "device": device, "subject_id": sid,
-         "subject_name": subject_label(subject)},
+         "subject_name": subject_label(subject), **owner_meta(request)},
         steps=[(country, e) for e in valid_engines],
     )
     audit(request, "search_launch", query=query, country=country, pages=pages,
@@ -292,14 +335,19 @@ async def run_search(request: Request, query: str = Form(""), country: str = For
                     f"{er.get('engine')}: {er.get('error')}" for er in engine_runs))
             all_results: list = []
             ai_note = ""
+            new_negatives = 0
             agg_summary = {"total": 0, "positive": 0, "negative": 0, "neutral": 0}
             for engine_run in outcome["engine_runs"]:
                 if engine_run.get("error"):
                     continue
-                on_step(country, engine_run.get("engine"), "saving")
-                out = persist_engine_run(sdb, engine_run, positive_domains=positives,
-                                         negative_domains=negatives)
-                on_step(country, engine_run.get("engine"), "done", summary=out["summary"])
+                engine = engine_run.get("engine")
+                on_step(country, engine, "saving")
+                out = persist_engine_run(
+                    sdb, engine_run, positive_domains=positives, negative_domains=negatives,
+                    on_stage=lambda name, _e=engine: on_step(country, _e, "saving", stage=name))
+                new_negatives += out.get("new_negatives", 0)
+                on_step(country, engine, "done",
+                        summary={**out["summary"], "new_negatives": out.get("new_negatives", 0)})
                 all_results.extend(out["results"])
                 for k in agg_summary:
                     agg_summary[k] += out["summary"].get(k, 0)
@@ -311,7 +359,7 @@ async def run_search(request: Request, query: str = Form(""), country: str = For
                     jobs.add_progress(jid, f"{engine_run['engine'].title()}: {out['ai_note']}")
             return {"kind": "single", "run_id": outcome["run_id"], "country": country,
                     "query": query, "summary": agg_summary, "results": all_results,
-                    "subject_id": sid, "ai_note": ai_note}
+                    "subject_id": sid, "ai_note": ai_note, "new_negatives": new_negatives}
 
     jobs.run_in_thread(job_id, work)
     return _started(job_id)
@@ -351,7 +399,7 @@ async def search_multi(request: Request, query: str = Form(""), countries: list 
     job_id = jobs.create(
         "multi",
         {"query": query, "countries": countries, "engines": valid_engines, "device": device,
-         "subject_id": sid, "subject_name": subject_label(subject)},
+         "subject_id": sid, "subject_name": subject_label(subject), **owner_meta(request)},
         steps=[(c, e) for c in countries for e in valid_engines],
     )
     audit(request, "search_multi_launch", query=query, countries=countries, pages=pages,
@@ -441,13 +489,12 @@ def _done_note(job: dict | None) -> str:
     text = (f"Done. {plural(agg.get('total', 0), 'result')}: {agg.get('positive', 0)} positive, "
             f"{agg.get('negative', 0)} negative, {agg.get('neutral', 0)} neutral.")
     if bad:
-        text += f" {plural(bad, 'country', 'countries')} failed; see the steps above."
+        text += f" {plural(bad, 'country', 'countries')} failed; see Details."
     return text + ai_tail
 
 
 def _step_counts(steps: list[dict]) -> tuple[int, int]:
-    done = sum(1 for s in steps if s.get("state") in TERMINAL_STEP_STATES)
-    return done, len(steps)
+    return js.step_counts(steps)
 
 
 def _step_label(step: dict) -> str:
@@ -457,15 +504,11 @@ def _step_label(step: dict) -> str:
 
 
 def _fmt_elapsed(seconds) -> str:
-    try:
-        s = max(0, int(seconds))
-    except (TypeError, ValueError):
-        return ""
-    return f"{s // 60}:{s % 60:02d}"
+    return js.fmt_elapsed(seconds)
 
 
 def _step_detail(step: dict) -> str:
-    """Secondary text of a step row (mirrored in app.js::stepDetail)."""
+    """Secondary text of a step row in Details (mirrored in app.js::stepDetail)."""
     state = step.get("state")
     if state == "done" and step.get("summary"):
         sm = step["summary"]
@@ -473,6 +516,8 @@ def _step_detail(step: dict) -> str:
                 f"{sm.get('negative', 0)} negative · {sm.get('neutral', 0)} neutral")
     if state in ("skipped", "error") and step.get("message"):
         return str(step["message"])
+    if state == "saving" and step.get("stage"):
+        return js.STAGE_SENTENCES.get(step["stage"], "Classifying and saving…")
     if step.get("apify_status"):
         el = step.get("apify_elapsed_s")
         return f"Apify {step['apify_status']}" + (f" · {el}s" if el is not None else "")
@@ -493,16 +538,24 @@ def _steps_html(steps: list[dict]) -> str:
     return f"<ol class='job-steps' data-job-steps>{''.join(items)}</ol>" if items else ""
 
 
+def _details_html(job: dict) -> str:
+    """The collapsed "Details" disclosure: per-step list (state + counts) and
+    the activity log. Opened by itself only when a step failed."""
+    steps = job.get("steps") or []
+    opened = " open" if js.any_step_failed(steps) else ""
+    log = job.get("progress") or []
+    if job.get("status") == "error":
+        # "Searching in xx…" lines describe work in flight; after a failure
+        # they only contradict the error.
+        log = [m for m in log if not m.startswith("Searching in ")]
+    log_html = "".join(f"<li>{_esc(m)}</li>" for m in log)
+    return (f"<details class='job-details' data-job-details{opened}><summary>Details</summary>"
+            f"{_steps_html(steps)}"
+            f"<ul class='job-log' data-job-log>{log_html}</ul></details>")
+
+
 def _job_subtitle(meta: dict) -> str:
-    countries = meta.get("countries") or ([meta["country"]] if meta.get("country") else [])
-    parts = []
-    if countries:
-        parts.append(", ".join(c.upper() for c in countries))
-    if meta.get("engines"):
-        parts.append(", ".join(e.capitalize() for e in meta["engines"]))
-    if meta.get("device") and meta["device"] != "desktop":
-        parts.append(str(meta["device"]))
-    return " · ".join(parts)
+    return js.scope_line(meta)
 
 
 def _job_head(job: dict) -> str:
@@ -512,16 +565,65 @@ def _job_head(job: dict) -> str:
             + (f"<p class='muted job-meta'>{_esc(sub)}</p>" if sub else ""))
 
 
+def _status_box(job_id: str, job: dict, scope: bool = True) -> str:
+    """ONE status box: what the search is doing (a sentence), elapsed time,
+    progress bar, "Countries: … · Engines: …", then Details (collapsed).
+    Updated in place by static/app.js (initJob) while running."""
+    steps = job.get("steps") or []
+    done_steps, total_steps = _step_counts(steps)
+    status = job.get("status") or "running"
+    pct = 100 if status == "done" else (int(done_steps * 100 / total_steps) if total_steps else 0)
+    elapsed = (job.get("finished_at") or time.time()) - job["started_at"]
+    activity = js.activity_sentence(job, job.get("result"))
+    running = status == "running"
+    poll = f" data-job-status-url='/job/{_esc(job_id)}/status'" if running else ""
+    tone = {"done": " is-done", "error": " is-error"}.get(status, " is-running")
+    sub = js.scope_line(job.get("meta") or {}) if scope else ""
+    role = " role='alert'" if status == "error" else ""
+    return (
+        f"<div class='job-box{tone}' data-job-box{role}>"
+        "<div class='job-box-top'>"
+        "<span class='job-spinner' aria-hidden='true'></span>"
+        f"<p class='job-activity' data-job-activity>{_esc(activity)}</p>"
+        f"<span class='job-timer' data-job-elapsed title='Elapsed time'>{_fmt_elapsed(elapsed)}</span>"
+        "</div>"
+        f"<div class='job-progress{' is-error' if status == 'error' else ''}' role='progressbar' "
+        f"aria-label='Search progress' aria-valuemin='0' aria-valuemax='{total_steps}' "
+        f"aria-valuenow='{done_steps}' aria-valuetext='{done_steps} of {total_steps} steps finished' "
+        f"data-job-progress><div class='job-progress-bar' data-job-bar style='width:{pct}%'></div></div>"
+        + (f"<p class='job-scope' data-job-scope>{_esc(sub)}</p>" if sub else "")
+        + f"<p class='sr-only' role='status' aria-live='polite' data-job-live>{_esc(activity)}</p>"
+        "</div>"
+        f"<p class='job-notice' data-job-notice hidden></p>"
+    ), poll
+
+
+def _live_card(job_id: str, job: dict, extra_cls: str = "") -> str:
+    box, poll = _status_box(job_id, job)
+    return (f"<div class='job-card {extra_cls}' data-job-id='{_esc(job_id)}'{poll} "
+            f"data-job-state='{_esc(job.get('status'))}' "
+            f"data-started-at='{job['started_at']:.3f}' data-server-now='{time.time():.3f}'>"
+            f"{box}{_details_html(job)}</div>")
+
+
+def _mark_seen_if_finished(jobs, job: dict) -> None:
+    if job.get("status") != "running":
+        jobs.mark_seen(job["id"], viewer_key())
+
+
 # --------------------------------------------------------------------- #
 # GET /job/{id}/status (JSON, polled by app.js)
 # --------------------------------------------------------------------- #
+def _not_found_json(job_id: str) -> JSONResponse:
+    return JSONResponse({"error": "not_found", "id": job_id}, status_code=404, headers=_NO_STORE)
+
+
 @router.get("/job/{job_id}/status", tags=["search-pages"])
 async def job_status(job_id: str):
     jobs = _get_main().jobs
     snap = jobs.snapshot(job_id)
-    if snap is None:
-        return JSONResponse({"error": "not_found", "id": job_id}, status_code=404,
-                            headers=_NO_STORE)
+    if snap is None or not _job_visible(snap):
+        return _not_found_json(job_id)
     result = None
     full = None
     if snap["status"] == "done":
@@ -536,6 +638,10 @@ async def job_status(job_id: str):
         "kind": "multi" if snap["type"] == "multi" else "single",
         "status": snap["status"],
         "query": meta.get("query"),
+        "subject_id": meta.get("subject_id"),
+        "subject_name": meta.get("subject_name") or meta.get("query"),
+        "activity": js.activity_sentence(snap, result),
+        "scope": js.scope_line(meta),
         "started_at": round(snap["started_at"], 3),
         "server_now": round(now, 3),
         "elapsed_s": round(max(0.0, end - snap["started_at"]), 1),
@@ -543,13 +649,14 @@ async def job_status(job_id: str):
             {"key": s["key"], "country": s["country"], "engine": s["engine"],
              "state": s["state"], "apify_status": s["apify_status"],
              "apify_elapsed_s": s["apify_elapsed_s"], "summary": s["summary"],
-             "message": s["message"]}
+             "message": s["message"], "stage": s.get("stage")}
             for s in snap["steps"]
         ],
         "done_steps": done_steps,
         "total_steps": total_steps,
+        "summary": js.job_summary(snap, result) if snap["status"] != "running" else None,
         "log": snap["progress"],
-        "error": snap["error"],
+        "error": js.plain_error(snap["error"]) if snap["error"] else None,
         "redirect": job_redirect_target(job_id, snap["status"], result),
         "view_url": job_view_url(full) if full else None,
         "done_note": _done_note(full) if full else None,
@@ -558,65 +665,152 @@ async def job_status(job_id: str):
 
 
 # --------------------------------------------------------------------- #
+# GET /jobs/active, POST /jobs/{id}/seen (top-bar chip, toasts, Runs)
+# --------------------------------------------------------------------- #
+def _brief(jobs, snap: dict, now: float, key: str) -> dict:
+    """One job as GET /jobs/active lists it."""
+    meta = snap.get("meta") or {}
+    status = snap["status"]
+    full = jobs.get(snap["id"]) if status == "done" else None
+    result = (full or {}).get("result")
+    done_steps, total_steps = _step_counts(snap["steps"])
+    end = snap["finished_at"] or now
+    return {
+        "id": snap["id"],
+        "subject_id": meta.get("subject_id"),
+        "subject_name": meta.get("subject_name") or meta.get("query") or "",
+        "query": meta.get("query") or "",
+        "status": status,
+        "activity": js.activity_sentence(snap, result),
+        "done_steps": done_steps,
+        "total_steps": total_steps,
+        "started_at": round(snap["started_at"], 3),
+        "elapsed_s": round(max(0.0, end - snap["started_at"]), 1),
+        "finished_at": round(snap["finished_at"], 3) if snap["finished_at"] else None,
+        "summary": js.job_summary(snap, result) if status != "running" else None,
+        "error": js.plain_error(snap["error"]) if status == "error" else None,
+        "redirect": job_redirect_target(snap["id"], status, result),
+        "view_url": job_view_url(full) if full else None,
+        "started_by": meta.get("started_by") or "",
+        "seen": key in (snap.get("seen_by") or ()),
+    }
+
+
+def active_jobs(now: float | None = None) -> dict:
+    """Running jobs, and jobs finished in the last ACTIVE_FINISHED_SECONDS
+    that this viewer hasn't seen, of the subjects the viewer may see: the
+    active subject's in `jobs`, the others in `other_jobs`."""
+    jobs = _get_main().jobs
+    now = time.time() if now is None else now
+    key = viewer_key()
+    visible = visible_subject_ids()
+    active_sid = db.current_subject().get("id")
+    mine, other = [], []
+    for snap in jobs.snapshots():
+        sid = (snap.get("meta") or {}).get("subject_id")
+        if sid is None or sid not in visible:
+            continue
+        if snap["status"] != "running":
+            finished = snap["finished_at"] or snap["started_at"]
+            if key in (snap.get("seen_by") or ()) or now - finished > js.ACTIVE_FINISHED_SECONDS:
+                continue
+        (mine if sid == active_sid else other).append(_brief(jobs, snap, now, key))
+    running = sum(1 for j in mine + other if j["status"] == "running")
+    return {"server_now": round(now, 3), "subject_id": active_sid, "jobs": mine,
+            "other_jobs": other, "other_count": len(other), "running": running}
+
+
+@router.get("/jobs/active", tags=["search-pages"])
+async def jobs_active():
+    return JSONResponse(active_jobs(), headers=_NO_STORE)
+
+
+@router.post("/jobs/{job_id}/seen", tags=["search-pages"])
+async def job_seen(job_id: str):
+    """Hides a finished job from this viewer's chip/toasts. Same-site only
+    (csrf_middleware); allowed for read-only accounts (role_middleware)."""
+    jobs = _get_main().jobs
+    snap = jobs.snapshot(job_id)
+    if snap is None or not _job_visible(snap):
+        return _not_found_json(job_id)
+    jobs.mark_seen(job_id, viewer_key())
+    return JSONResponse({"ok": True, "id": job_id}, headers=_NO_STORE)
+
+
+def running_now_html() -> str:
+    """Runs panel: "Running now" (the active subject's running searches;
+    each opens the job panel). Kept current by app.js (SM.jobs)."""
+    jobs = _get_main().jobs
+    sid = db.current_subject().get("id")
+    if sid not in visible_subject_ids():
+        return ""
+    items = []
+    now = time.time()
+    for snap in jobs.snapshots():
+        meta = snap.get("meta") or {}
+        if snap["status"] != "running" or meta.get("subject_id") != sid:
+            continue
+        done_steps, total_steps = _step_counts(snap["steps"])
+        pct = int(done_steps * 100 / total_steps) if total_steps else 0
+        jid = _esc(snap["id"])
+        items.append(
+            f"<a class='li job-now' href='/job/{jid}' data-panel='/ui/job/{jid}' data-title='Search progress' "
+            f"data-active-job='{jid}'>"
+            "<span class='li-top'><span class='job-spinner' aria-hidden='true'></span>"
+            f"<b>{_esc(meta.get('query') or 'Search')}</b>"
+            f"<span class='muted num' data-active-job-elapsed>{_fmt_elapsed(now - snap['started_at'])}</span></span>"
+            f"<span class='li-sub' data-active-job-activity>{_esc(js.activity_sentence(snap))}</span>"
+            f"<span class='job-progress sm' aria-hidden='true'><span class='job-progress-bar' data-active-job-bar "
+            f"style='width:{pct}%'></span></span></a>")
+    if not items:
+        return ""
+    return ("<section class='running-now' aria-labelledby='running-now-h'>"
+            "<h3 id='running-now-h' class='section-label'>Running now</h3>"
+            f"<div class='list'>{''.join(items)}</div></section>")
+
+
+# --------------------------------------------------------------------- #
 # GET /ui/job/{id}: live progress in a side panel
 # --------------------------------------------------------------------- #
-def _live_card(job_id: str, job: dict, extra_cls: str = "") -> str:
-    """Progress card updated in place by static/app.js (initJob)."""
-    steps = job.get("steps") or []
-    done_steps, total_steps = _step_counts(steps)
-    pct = int(done_steps * 100 / total_steps) if total_steps else 0
-    elapsed = (job.get("finished_at") or time.time()) - job["started_at"]
-    log_html = "".join(f"<li>{_esc(m)}</li>" for m in job["progress"])
-    running = job["status"] == "running"
-    status_url = f" data-job-status-url='/job/{_esc(job_id)}/status'" if running else ""
-    state = {"running": "Running", "done": "Finished", "error": "Failed"}.get(job["status"], "Running")
-    return (
-        f"<div class='job-card {extra_cls}' data-job-id='{_esc(job_id)}'{status_url} "
-        f"data-started-at='{job['started_at']:.3f}' data-server-now='{time.time():.3f}'>"
-        f"<div class='job-head'><div class='job-head-text'><b data-job-step-count>Step {done_steps} of {total_steps}</b></div>"
-        f"<span class='job-timer' data-job-elapsed title='Elapsed time'>{_fmt_elapsed(elapsed)}</span></div>"
-        f"<div class='job-progress' role='progressbar' aria-label='Search progress' "
-        f"aria-valuemin='0' aria-valuemax='{total_steps}' aria-valuenow='{done_steps}' "
-        f"data-job-progress><div class='job-progress-bar' data-job-bar style='width:{pct}%'></div></div>"
-        f"<p class='job-status-line' role='status' aria-live='polite' data-job-live>"
-        f"{state} · {done_steps} of {total_steps} steps finished</p>"
-        f"{_steps_html(steps)}"
-        f"<p class='job-notice' data-job-notice hidden></p>"
-        f"<details class='job-log'><summary>Activity log</summary><ul data-job-log>{log_html}</ul></details>"
-        "</div>"
-    )
+def _gone_panel():
+    inner = ui.overlay("Search", "<div class='empty'><b>This search is no longer available.</b>"
+                       "<br>It finished a while ago or the server restarted. Its results, if any, "
+                       "are under Runs.</div>",
+                       "<button type='button' class='btn ghost' data-sm-close>Close</button>")
+    return fragment_or_page("Search", inner, active="/results", status_code=404)
+
+
+_NEW_SEARCH_URL = overlay_url("/ui/search", "modal")
 
 
 @router.get("/ui/job/{job_id}", response_class=HTMLResponse, tags=["ui"])
 async def ui_job(job_id: str):
-    job = _get_main().jobs.get(job_id)
-    if not job:
-        inner = ui.overlay("Search", "<div class='empty'><b>This search is no longer available.</b>"
-                           "<br>It finished a while ago or the server restarted. Its results, if any, "
-                           "are under Runs.</div>",
-                           "<button type='button' class='btn ghost' data-sm-close>Close</button>")
-        return fragment_or_page("Search", inner, active="/results", status_code=404)
+    jobs = _get_main().jobs
+    job = jobs.get(job_id)
+    if not job or not _job_visible(job):
+        return _gone_panel()
+    _mark_seen_if_finished(jobs, job)
     meta = job.get("meta") or {}
     name = meta.get("subject_name") or meta.get("query") or "your subject"
-    sub = _job_subtitle(meta)
-    body = (f"<p class='note'>{_esc(sub)}</p>" if sub else "") + _live_card(job_id, job)
-    view = job_view_url(job) if job["status"] == "done" else "/results"
-    if job["status"] == "running":
+    status = job["status"]
+    body = _live_card(job_id, job)
+    view = job_view_url(job) if status == "done" else "/results"
+    if status == "running":
         body += ("<p class='note' data-job-done-note hidden></p>"
-                 "<p class='note job-foot'>You can close this panel. The search keeps running on the "
-                 "server; Runs and Results show it when it's done.</p>")
-    elif job["status"] == "done":
+                 "<p class='note job-foot'>Run in background keeps it going; the top bar shows how "
+                 "it's doing and tells you when it's done.</p>")
+    elif status == "done":
         body += f"<p class='note' data-job-done-note>{_esc(_done_note(job))}</p>"
-    else:
-        body += (f"<div class='hint hint-error' role='alert'><b>The search failed:</b> {_esc(job.get('error'))}"
-                 " <a href='/ui/search' data-modal data-title='New search'>Try again</a></div>")
-    hidden = "" if job["status"] == "done" else " hidden"
-    bg_label = "Run in background" if job["status"] == "running" else "Close"
+    bg_label = "Run in background" if status == "running" else "Close"
     foot = (f"<button type='button' class='btn ghost' data-sm-close data-job-background>{bg_label}</button>"
-            f"<a class='btn primary' href='{_esc(view)}' data-job-view{hidden}>View results</a>")
-    inner = ui.overlay(f"Searching {name}", body, foot)
+            f"<a class='btn primary' href='{_esc(_NEW_SEARCH_URL)}' data-job-retry"
+            f"{'' if status == 'error' else ' hidden'}>Back to New search</a>"
+            f"<a class='btn primary' href='{_esc(view)}' data-job-view"
+            f"{'' if status == 'done' else ' hidden'}>View results</a>")
+    title = f"Searching {name}" if status == "running" else f"Search for {name}"
+    inner = ui.overlay(title, body, foot)
     return HTMLResponse(inner, headers=_NO_STORE) if is_fragment_request() else \
-        fragment_or_page(f"Searching {name}", inner, active="/results")
+        fragment_or_page(title, inner, active="/results")
 
 
 # --------------------------------------------------------------------- #
@@ -627,40 +821,24 @@ async def show_job(job_id: str):
     main = _get_main()
     jobs = main.jobs
     job = jobs.get(job_id)
-    if not job:
+    if not job or not _job_visible(job):
         return HTMLResponse(page(
             "Job not found",
             "<div class='card'><p>This search is no longer available (it doesn't exist, "
             "or the server restarted).</p><a href='/search_page'>Start a new search</a></div>",
             active="/search_page"), status_code=404, headers=_NO_STORE)
-
-    steps = job.get("steps") or []
-    log = job["progress"]
+    _mark_seen_if_finished(jobs, job)
 
     if job["status"] == "running":
-        done_steps, total_steps = _step_counts(steps)
-        pct = int(done_steps * 100 / total_steps) if total_steps else 0
-        elapsed = time.time() - job["started_at"]
-        log_html = "".join(f"<li>{_esc(m)}</li>" for m in log)
+        box, poll = _status_box(job_id, job)
         body = (
-            f"<div class='card job-card' id='job' data-job-id='{_esc(job_id)}' "
-            f"data-job-status-url='/job/{_esc(job_id)}/status' "
+            f"<div class='card job-card' id='job' data-job-id='{_esc(job_id)}'{poll} "
+            f"data-job-state='running' "
             f"data-started-at='{job['started_at']:.3f}' data-server-now='{time.time():.3f}'>"
-            f"<div class='job-head'><div class='job-head-text'>{_job_head(job)}</div>"
-            f"<span class='job-timer' data-job-elapsed title='Elapsed time'>"
-            f"{_fmt_elapsed(elapsed)}</span></div>"
-            f"<div class='job-progress' role='progressbar' aria-label='Search progress' "
-            f"aria-valuemin='0' aria-valuemax='{total_steps}' aria-valuenow='{done_steps}' "
-            f"data-job-progress><div class='job-progress-bar' data-job-bar "
-            f"style='width:{pct}%'></div></div>"
-            f"<p class='job-status-line' role='status' aria-live='polite' data-job-live>"
-            f"Running · {done_steps} of {total_steps} steps finished</p>"
-            f"{_steps_html(steps)}"
-            f"<p class='job-notice' data-job-notice hidden></p>"
-            f"<details class='job-log'><summary>Activity log</summary>"
-            f"<ul data-job-log>{log_html}</ul></details>"
+            f"<h2 class='job-title'>{_esc((job.get('meta') or {}).get('query') or 'Search')}</h2>"
+            f"{box}{_details_html(job)}"
             f"<p class='muted job-foot'>The search runs on the server — you can leave this page "
-            f"and come back. Apify searches take ~20-90s per country and engine. "
+            f"and come back; the top bar shows how it's doing. "
             f"<a href='/job/{_esc(job_id)}' data-job-refresh>Refresh</a></p>"
             f"<noscript><meta http-equiv='refresh' content='5'></noscript>"
             f"</div>"
@@ -671,28 +849,30 @@ async def show_job(job_id: str):
     job_link = f"<p class='muted'>Job <a href='/job/{_esc(job_id)}'>{_esc(job_id)}</a></p>"
 
     if job["status"] == "error":
-        # "Searching in xx…" lines describe work in flight; after a failure
-        # they only contradict the error. Other notes (skipped engines...) stay.
-        notes = [m for m in log if not m.startswith("Searching in ")]
-        notes_html = f"<ul>{''.join(f'<li>{_esc(m)}</li>' for m in notes)}</ul>" if notes else ""
-        body = (f"<div class='card job-card job-error' role='alert'>{_job_head(job)}"
+        # Notes (skipped engines...) are in Details, without the in-flight
+        # "Searching in xx…" lines (_details_html).
+        box, _poll = _status_box(job_id, job)
+        body = (f"<div class='card job-card job-error' data-job-id='{_esc(job_id)}'>"
+                f"<h2 class='job-title'>{_esc((job.get('meta') or {}).get('query') or 'Search')}</h2>"
                 f"<h3 class='job-error-title'>The search failed</h3>"
-                f"<p>{_esc(job['error'])}</p>{_steps_html(steps)}{notes_html}"
-                f"<p><a class='btn-link' href='/search_page'>Start a new search</a></p>"
+                f"{box}{_details_html(job)}"
+                f"<p><a class='btn primary' href='/search_page'>Back to New search</a></p>"
                 f"{job_link}</div>")
         return page("Search error", body, active="/search_page")
 
     res = job["result"] or {}
+    details = _details_html(job) if job.get("steps") else ""
+    done_line = f"<p class='job-activity is-done'>{_esc(js.activity_sentence(job, res))}</p>"
     if res.get("kind") == "single":
         s = res["summary"]
         body = (
-            f"<div class='card'><h2>Search completed</h2>"
+            f"<div class='card'><h2>Search completed</h2>{done_line}"
             f"<p class='muted'>{_esc((res.get('country') or '').upper())} · "
             f"Tracked name: {_esc(res['query'])}</p>"
             f"<p>Total: <b>{s['total']}</b> &nbsp; {_pill('positive')} {s['positive']} &nbsp;"
             f"{_pill('negative')} {s['negative']} &nbsp; {_pill('neutral')} {s['neutral']}</p>"
             f"<p><a href='{_esc(job_view_url(job))}'>View results</a> · "
-            f"<a href='/ui/reports' data-modal>Reports</a></p>{_steps_html(steps)}{job_link}</div>"
+            f"<a href='/ui/reports' data-modal>Reports</a></p>{details}{job_link}</div>"
             + _results_table(res["results"])
         )
         return page("Search result", body, active="/search_page")
@@ -710,15 +890,16 @@ async def show_job(job_id: str):
                      f"<td>{sm.get('positive',0)}</td><td>{sm.get('negative',0)}</td>"
                      f"<td>{sm.get('neutral',0)}</td><td><a href='/run/{rid}'>view ›</a></td></tr>")
     body = (
-        f"<div class='card'><h2>Multi-country report completed</h2>"
+        f"<div class='card'><h2>Multi-country report completed</h2>{done_line}"
         f"<p class='muted'>Tracked name: {_esc(res.get('query'))}</p>"
         f"<p>Countries OK: <b>{agg.get('countries_ok',0)}</b> · With error: <b>{agg.get('countries_error',0)}</b></p>"
         f"<p>Aggregate: {_pill('positive')} {agg.get('positive',0)} &nbsp; "
         f"{_pill('negative')} {agg.get('negative',0)} &nbsp; "
         f"{_pill('neutral')} {agg.get('neutral',0)} &nbsp; (total {agg.get('total',0)})</p>"
-        f"<p><a href='/ui/reports' data-modal>Reports</a></p>{job_link}</div>"
+        f"<p><a href='{_esc(job_view_url(job))}'>View results</a> · "
+        f"<a href='/ui/reports' data-modal>Reports</a></p>{job_link}</div>"
         f"<div class='card'><table><tr><th>Country</th><th>Status</th><th>Pos</th><th>Neg</th>"
         f"<th>Neu</th><th>Detail</th></tr>{rows}</table></div>"
-        + (f"<div class='card'><h3>Steps</h3>{_steps_html(steps)}</div>" if steps else "")
+        + (f"<div class='card'>{details}</div>" if details else "")
     )
     return page("Multi-country report", body, active="/search_page")

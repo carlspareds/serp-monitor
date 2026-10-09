@@ -114,7 +114,16 @@ Three destinations in the left rail (a bottom tab bar on phones):
 **Overview**, **Results** and **Settings**. Everything else opens as a dialog
 or a side panel over the page you are on, so you never lose your place.
 The top bar has the *Project ▸ Subject* switcher, "Find in stored results",
-the Assistant, the alerts bell and the account menu.
+the Assistant, the background-search chip, the alerts bell and the account
+menu.
+
+**Background searches.** While a search runs, a chip next to the bell says
+"Searching… 0:42" ("2 searches running" when several); it turns into "Search
+finished" or "Search failed" afterwards and stays until you open it. Clicking
+it opens the search's progress panel (or a short list when there are
+several). It survives reloads and page changes, and a toast tells you when a
+search finishes ("Search for Jordan Ashworth finished: 7 results, 1 new
+negative", with View results) or fails (with Details).
 
 **Results** shows the active subject's latest run (or a chosen run date) for
 one country: a one-row filter bar (country, run date, label chips, "More
@@ -129,10 +138,10 @@ Overview only has single shortcuts to the same dialogs. The toolbar opens:
 
 | Tool | Opens as | What it does |
 | --- | --- | --- |
-| New search | dialog → side panel | Pick the subject, countries and (when several are configured) engines; the search runs in the background and its progress shows live in a side panel. "View results" switches to that subject. Disabled, with a link to Settings → Search, until an Apify key is set. |
+| New search | dialog → side panel | Pick the subject, countries and (when several are configured) engines; the search runs in the background and the side panel shows one status box: what it is doing now ("Searching Google in the United Kingdom (2 of 6)…", "Waiting for Apify… 0:35", "Checking same-name results with AI…"), a progress bar, the elapsed time and the countries and engines on one line; the per-country steps are under a collapsed Details (opened by itself when one fails). "Run in background" closes the panel (the top-bar chip keeps track); "View results" switches to that subject. Disabled, with a link to Settings → Search, until an Apify key is set. |
 | Review | dialog | One uncertain result at a time ("3 of 7", progress bar): Positive / Negative / Neutral / Not this person (keys 1-4), Skip. Your verdict is final: rules and AI never overwrite it. |
 | Compare | dialog | Older run A vs newer run B of a country: entered, left, moved, label changes. |
-| Runs | side panel | Every run with its counts; open one, compare it with the previous one, delete it (admins). |
+| Runs | side panel | "Running now" (the subject's searches in progress, each opens its progress panel), then every run with its counts; open one, compare it with the previous one, delete it (admins). |
 | More → Timeline | side panel | Log an event (press release, removal request…) and see its measured effect two weeks later; changes detected between runs are listed too. |
 | More → Evidence | side panel | Saved copies of negative pages with their SHA-256 fingerprint, per page. |
 | More → Notes | side panel | Notes by status (open, in progress, escalated, resolved, dismissed), overdue ones flagged. |

@@ -8,7 +8,13 @@ GET /job/{id}/status until the job finishes.
 It's a simple in-memory manager (enough for a single uvicorn process).
 Each job is a dict with: id, type, status, progress[] (free-text log),
 steps[] (one per country x engine, ordered), result, error, started_at,
-finished_at. Jobs are lost on restart -- the job page says so on 404.
+finished_at, seen_by (viewer keys that have seen the finished job, see
+mark_seen and GET /jobs/active). Jobs are lost on restart -- the job page
+says so on 404.
+
+`meta` carries who/what: query, countries, engines, subject_id,
+subject_name and the owner (started_by = username or "local", session =
+a short hash of the session cookie; dashboard.job_status.owner_meta).
 """
 
 import copy
@@ -39,7 +45,10 @@ _KEEP_FINISHED_SECONDS = 24 * 3600
 STEP_STATES = ("pending", "launching", "running", "saving", "done", "skipped", "error")
 TERMINAL_STEP_STATES = frozenset({"done", "skipped", "error"})
 
-_STEP_FIELDS = ("state", "apify_status", "apify_elapsed_s", "summary", "message")
+# `stage` refines a 'saving' step: what the post-search pipeline is doing now
+# (report.multi_country.persist_engine_run on_stage: same_person, save,
+# severity, evidence) -- dashboard.job_status turns it into a sentence.
+_STEP_FIELDS = ("state", "apify_status", "apify_elapsed_s", "summary", "message", "stage")
 
 
 def _utc_iso(ts: float | None) -> str | None:
@@ -50,6 +59,12 @@ def _utc_iso(ts: float | None) -> str | None:
 
 def step_key(country: str, engine: str) -> str:
     return f"{country}:{engine}"
+
+
+def _new_step(country: str, engine: str) -> dict[str, Any]:
+    return {"key": step_key(country, engine), "country": country, "engine": engine,
+            "state": "pending", "apify_status": None, "apify_elapsed_s": None,
+            "summary": None, "message": None, "stage": None}
 
 
 class JobManager:
@@ -68,13 +83,7 @@ class JobManager:
         as (country, engine) pairs, all 'pending'. Prunes old finished jobs."""
         job_id = uuid.uuid4().hex[:12]
         now = time.time()
-        seeded = []
-        for country, engine in steps or []:
-            seeded.append({
-                "key": step_key(country, engine), "country": country, "engine": engine,
-                "state": "pending", "apify_status": None, "apify_elapsed_s": None,
-                "summary": None, "message": None,
-            })
+        seeded = [_new_step(country, engine) for country, engine in steps or []]
         with self._lock:
             self._prune_locked(now)
             self._jobs[job_id] = {
@@ -89,6 +98,7 @@ class JobManager:
                 "started_at": now,            # epoch seconds
                 "finished_at": None,
                 "created_at": _utc_iso(now),  # legacy display string (naive UTC)
+                "seen_by": set(),             # viewer keys (mark_seen)
             }
         return job_id
 
@@ -109,9 +119,7 @@ class JobManager:
             step = next((s for s in job["steps"] if s["key"] == key), None)
             if step is None:
                 country, _, engine = key.partition(":")
-                step = {"key": key, "country": country, "engine": engine,
-                        "state": "pending", "apify_status": None, "apify_elapsed_s": None,
-                        "summary": None, "message": None}
+                step = _new_step(country, engine)
                 job["steps"].append(step)
             new_state = fields.get("state")
             if (step["state"] in TERMINAL_STEP_STATES
@@ -151,6 +159,22 @@ class JobManager:
                 job["error"] = error
                 job["finished_at"] = time.time()
 
+    def mark_seen(self, job_id: str, viewer_key: str) -> bool:
+        """Records that `viewer_key` has seen this job (the top-bar chip and
+        the "finished" toast stop showing it to them). False if unknown."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return False
+            job["seen_by"].add(viewer_key)
+            return True
+
+    def snapshots(self) -> list[dict[str, Any]]:
+        """snapshot() of every job, oldest first (GET /jobs/active)."""
+        with self._lock:
+            ids = sorted(self._jobs, key=lambda i: self._jobs[i]["started_at"])
+        return [s for s in (self.snapshot(i) for i in ids) if s is not None]
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         """Deep copy of the job (callers can't mutate shared state)."""
         with self._lock:
@@ -175,6 +199,7 @@ class JobManager:
                 "error": job["error"],
                 "started_at": job["started_at"],
                 "finished_at": job["finished_at"],
+                "seen_by": sorted(job.get("seen_by") or ()),
             }
 
     def prune(self, now: float | None = None) -> int:

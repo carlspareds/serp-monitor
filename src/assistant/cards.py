@@ -20,6 +20,8 @@ text) into small card events the panel renders next to the plain answer:
            (the new file): name, kind and a Download link.
   sov      get_overview: positive / negative / neutral of the latest run per
            country (a mini share-of-voice bar).
+  job      a confirmed start_search: the search's status sentence, a progress
+           bar and Open (the job panel), kept current by app.js (SM.jobs).
 
 Everything in `data` comes from the tool result and is JSON-safe; the panel
 escapes every string. URLs are same-site paths, except result URLs, which the
@@ -133,6 +135,19 @@ def from_tool(name: str, result: dict, ctx: tools.ToolContext) -> dict | None:
     if not kind or not data:
         return None
     return {"type": "card", "kind": kind, "tool": name, "data": data}
+
+
+def job_card(result: dict) -> dict | None:
+    """A confirmed start_search: a compact live card (status sentence,
+    progress, Open). The panel keeps it current from GET /jobs/active."""
+    from dashboard import job_status
+
+    job_id = result.get("job_id")
+    if not job_id:
+        return None
+    return {"type": "card", "kind": "job", "tool": "start_search",
+            "data": {"job_id": job_id, "title": result.get("title") or "Search",
+                     "activity": job_status.activity_sentence({"status": "running", "steps": []})}}
 
 
 def report_card(result: dict) -> dict | None:

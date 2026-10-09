@@ -8,7 +8,10 @@
  *   SM.close([el])              close the top-most overlay (or `el`'s overlay)
  *   SM.closeAll()
  *   SM.reload([el])             re-fetch the overlay's URL into it
- *   SM.toast(message, kind)     transient status message (kind: ok | error | info)
+ *   SM.toast(message, kind, {action, onAction})
+ *                               transient status message (kind: ok | error | info),
+ *                               optionally with one action button
+ *   SM.jobs.refresh()           re-read GET /jobs/active (top-bar search chip)
  *   SM.load(url)                fetch a server-rendered fragment -> Promise<string>
  *
  *   `src` is a URL (fetched with the header X-SM-Fragment: 1, so the server
@@ -362,8 +365,13 @@
   };
 
   // ---- Toasts ----
-  SM.toast = function (message, kind) {
+  // opts.action + opts.onAction: a button in the toast ("View results",
+  // "Details"); such a toast stays longer (and while it has focus or the
+  // pointer) and has a Dismiss button. The region is aria-live, so toasts
+  // are announced; errors use role=alert.
+  SM.toast = function (message, kind, opts) {
     if (!message) return;
+    opts = opts || {};
     var region = document.getElementById('sm-toasts');
     if (!region) {
       region = document.createElement('div');
@@ -373,11 +381,38 @@
       document.body.appendChild(region);
     }
     var t = document.createElement('div');
-    t.className = 'toast' + (kind === 'error' ? ' toast-error' : '');
+    t.className = 'toast' + (kind === 'error' ? ' toast-error' : '') + (opts.action ? ' toast-action' : '');
     t.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-    t.textContent = message;
+    function remove() { if (t.parentNode) t.parentNode.removeChild(t); }
+    if (opts.action) {
+      var msg = document.createElement('span');
+      msg.className = 'toast-msg';
+      msg.textContent = message;
+      t.appendChild(msg);
+      var act = document.createElement('button');
+      act.type = 'button';
+      act.className = 'toast-btn';
+      act.textContent = opts.action;
+      act.addEventListener('click', function () { remove(); if (typeof opts.onAction === 'function') opts.onAction(); });
+      t.appendChild(act);
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'toast-x';
+      x.setAttribute('aria-label', 'Dismiss');
+      x.innerHTML = '&times;';
+      x.addEventListener('click', remove);
+      t.appendChild(x);
+    } else {
+      t.textContent = message;
+    }
     region.appendChild(t);
-    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, kind === 'error' ? 6000 : 3200);
+    var ms = opts.timeout || (opts.action ? 12000 : kind === 'error' ? 6000 : 3200);
+    var expire = function () {
+      if (t.matches(':hover') || t.contains(document.activeElement)) { setTimeout(expire, 2000); return; }
+      remove();
+    };
+    setTimeout(expire, ms);
+    return t;
   };
 
   // Alerts badge on the bell follows any fragment that reports a count.
@@ -817,16 +852,35 @@
     if (location.hash && byId[location.hash.slice(1)]) setOn(location.hash.slice(1));
   }
 
-  // ---- Live job progress (/job/{id}) ---------------------------------------------
-  // Polls the JSON status endpoint and updates the progress card in place
-  // (no full-page reloads). Markup is rendered by dashboard/routers/search_runner.py.
+  // ---- Live job progress (/ui/job/{id} panel, /job/{id} page) ---------------------
+  // Polls the JSON status endpoint and updates the ONE status box in place: the
+  // activity sentence (d.activity), elapsed time, progress bar; the per-step
+  // list lives in the collapsed Details (opened by itself when a step fails).
+  // Markup is rendered by dashboard/routers/search_runner.py (_status_box).
   var jobEl = document.querySelector('[data-job-status-url]');
   if (jobEl) initJob(jobEl);
+
+  function fmtClock(s) {
+    s = Math.max(0, Math.floor(s || 0));
+    var m = Math.floor(s / 60), r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+  function plural(n, word, many) { return n + ' ' + (n === 1 ? word : (many || word + 's')); }
+  // The sentence without a trailing timer ("Waiting for Apify (…)… 0:35"), so
+  // screen readers hear stage changes, not every tick.
+  function activityKey(t) { return String(t || '').replace(/\s\d+:\d\d$/, ''); }
+  function markJobSeen(id) {
+    return fetch('/jobs/' + encodeURIComponent(id) + '/seen', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store', keepalive: true,
+      headers: { 'Accept': 'application/json' }
+    }).catch(function () {});
+  }
 
   function initJob(el) {
     if (el._smJob) return;
     el._smJob = true;
     var url = el.getAttribute('data-job-status-url');
+    var jobId = el.getAttribute('data-job-id');
     var inOverlay = !!el.closest('.panel, .modal');
     var startedAt = parseFloat(el.getAttribute('data-started-at')) || 0;
     // Client clock minus server clock, so elapsed time ticks locally.
@@ -837,22 +891,20 @@
     var stopped = false;
     var inflight = false;
     var finishedAt = null;
+    var autoOpened = false;
     var PILL = { pending: '', launching: 'info', running: 'info', saving: 'info',
                  done: 'positive', skipped: 'warning', error: 'negative' };
-    var TERMINAL = { done: 1, skipped: 1, error: 1 };
+    var STAGES = { classify: 'Saving results…', same_person: 'Checking same-name results with AI…',
+                   save: 'Saving results…', severity: 'Rating the negatives with AI…',
+                   evidence: 'Capturing evidence for new negatives…' };
 
     function q(sel) { return el.querySelector(sel); }
-    function fmt(s) {
-      s = Math.max(0, Math.floor(s));
-      var m = Math.floor(s / 60), r = s % 60;
-      return m + ':' + (r < 10 ? '0' : '') + r;
-    }
     function tick() {
       if (!document.contains(el)) { clearInterval(clock); stop(); return; }
       var t = q('[data-job-elapsed]');
       if (!t) return;
       var now = finishedAt !== null ? finishedAt : (Date.now() / 1000 - offset);
-      t.textContent = fmt(now - startedAt);
+      t.textContent = fmtClock(now - startedAt);
     }
     var clock = setInterval(tick, 1000);
     tick();
@@ -877,6 +929,7 @@
           (m.negative || 0) + ' negative · ' + (m.neutral || 0) + ' neutral';
       }
       if ((s.state === 'skipped' || s.state === 'error') && s.message) return s.message;
+      if (s.state === 'saving' && s.stage && STAGES[s.stage]) return STAGES[s.stage];
       if (s.apify_status) {
         return 'Apify ' + s.apify_status +
           (s.apify_elapsed_s !== null && s.apify_elapsed_s !== undefined ? ' · ' + s.apify_elapsed_s + 's' : '');
@@ -910,65 +963,78 @@
       li.appendChild(name); li.appendChild(pill); li.appendChild(det);
       return li;
     }
+    function setActivity(text) {
+      var a = q('[data-job-activity]');
+      if (a && a.textContent !== text) a.textContent = text;
+      var live = q('[data-job-live]');
+      if (live && activityKey(live.textContent) !== activityKey(text)) live.textContent = activityKey(text);
+    }
     function render(d) {
       if (typeof d.server_now === 'number') offset = Date.now() / 1000 - d.server_now;
       if (typeof d.started_at === 'number') startedAt = d.started_at;
+      if (d.activity) setActivity(d.activity);
+      // Details: the per-step list (never shown outside the disclosure).
+      var details = q('[data-job-details]');
       var list = q('[data-job-steps]');
-      if (!list && d.steps && d.steps.length) {
+      if (!list && details && d.steps && d.steps.length) {
         list = document.createElement('ol');
         list.className = 'job-steps';
         list.setAttribute('data-job-steps', '');
-        q('[data-job-live]').insertAdjacentElement('afterend', list);
+        details.insertBefore(list, details.querySelector('[data-job-log]'));
       }
+      var failed = false;
       (d.steps || []).forEach(function (s) {
+        if (s.state === 'error') failed = true;
+        if (!list) return;
         var li = null;
         var all = list.querySelectorAll('[data-step-key]');
         for (var i = 0; i < all.length; i++) if (all[i].getAttribute('data-step-key') === s.key) li = all[i];
         if (!li) { li = newStep(s); list.appendChild(li); }
         renderStep(li, s);
       });
+      // A failed step opens Details once (the user may close it again).
+      if (failed && details && !details.open && !autoOpened) { details.open = true; autoOpened = true; }
       var total = d.total_steps || 0, done = d.done_steps || 0;
       var bar = q('[data-job-bar]');
-      if (bar) bar.style.width = (total ? Math.round(done * 100 / total) : 0) + '%';
+      if (bar) bar.style.width = (d.status === 'done' ? 100 : (total ? Math.round(done * 100 / total) : 0)) + '%';
       var prog = q('[data-job-progress]');
-      if (prog) { prog.setAttribute('aria-valuemax', total); prog.setAttribute('aria-valuenow', done); }
-      var head = q('[data-job-step-count]');
-      var headText = 'Step ' + done + ' of ' + total;
-      if (head && head.textContent !== headText) head.textContent = headText;
-      var live = q('[data-job-live]');
-      var label = (d.status === 'done' ? 'Finished' : d.status === 'error' ? 'Failed' : 'Running') +
-        ' · ' + done + ' of ' + total + ' steps finished';
-      if (live && live.textContent !== label) live.textContent = label;   // only announce changes
+      if (prog) {
+        prog.setAttribute('aria-valuemax', total); prog.setAttribute('aria-valuenow', done);
+        prog.setAttribute('aria-valuetext', done + ' of ' + total + ' steps finished');
+      }
       var log = q('[data-job-log]');
       if (log && d.log && log.children.length !== d.log.length) {
         log.textContent = '';
         d.log.forEach(function (m) { var item = document.createElement('li'); item.textContent = m; log.appendChild(item); });
       }
     }
+    function setTone(tone) {
+      var box = q('[data-job-box]');
+      if (box) box.className = 'job-box is-' + tone;
+      el.setAttribute('data-job-state', tone === 'running' ? 'running' : tone === 'done' ? 'done' : 'error');
+    }
+    function footer() { return el.closest('.panel, .modal') || el; }
     function renderError(d) {
+      setTone('error');
       el.classList.add('job-error');
-      el.setAttribute('role', 'alert');
+      var box = q('[data-job-box]');
+      if (box) box.setAttribute('role', 'alert');
       var bar = q('[data-job-progress]');
       if (bar) bar.classList.add('is-error');
-      var n = q('[data-job-notice]');
-      if (n) {
-        n.hidden = false;
-        n.className = 'job-notice job-notice-error';
-        n.textContent = '';
-        var b = document.createElement('b'); b.textContent = 'The search failed: ';
-        n.appendChild(b);
-        n.appendChild(document.createTextNode(d.error || 'unknown error'));
-        n.appendChild(document.createTextNode(' '));
-        var a = document.createElement('a'); a.href = '/ui/search'; a.textContent = 'Try again';
-        a.setAttribute('data-modal', ''); a.setAttribute('data-title', 'New search');
-        n.appendChild(a);
-      }
-      var foot = q('.job-foot');
+      var details = q('[data-job-details]');
+      if (details && !details.open && (d.steps || []).some(function (s) { return s.state === 'error'; })) details.open = true;
+      var f = footer();
+      var retry = f.querySelector('[data-job-retry]');
+      if (retry) retry.hidden = false;
+      var bg = f.querySelector('[data-job-background]');
+      if (bg) bg.textContent = 'Close';
+      var foot = f.querySelector('.job-foot');
       if (foot) foot.hidden = true;
     }
     // In the side panel: no auto-navigation; offer "View results" instead.
     function showDone(d) {
-      var box = el.closest('.panel, .modal') || el;
+      setTone('done');
+      var box = footer();
       var view = box.querySelector('[data-job-view]');
       if (view) {
         if (d.view_url) view.setAttribute('href', d.view_url);
@@ -981,6 +1047,10 @@
       if (n) { n.hidden = false; if (d.done_note) n.textContent = d.done_note; }
       var foot = box.querySelector('.job-foot');
       if (foot) foot.hidden = true;
+    }
+    function finished() {
+      // The viewer watched it finish: no "finished" toast, chip cleared.
+      if (jobId) markJobSeen(jobId).then(function () { if (SM.jobs) SM.jobs.refresh(); });
     }
     function stop() {
       stopped = true;
@@ -1026,8 +1096,11 @@
             stop();
             finishedAt = d.started_at + d.elapsed_s;
             tick();
-            if (inOverlay) { showDone(d); return; }
-            if (d.redirect) location.replace(d.redirect);
+            if (inOverlay) { showDone(d); finished(); return; }
+            if (d.redirect) {
+              markJobSeen(jobId);
+              location.replace(d.redirect);
+            }
             return;
           }
           if (d.status === 'error') {
@@ -1036,6 +1109,7 @@
             tick();
             clearInterval(clock);
             renderError(d);
+            finished();
             return;
           }
           schedule();
@@ -1059,6 +1133,194 @@
     });
     schedule();
   }
+
+  // "Back to New search" in a failed job's panel: close the panel, open the
+  // New search dialog (a plain link to /results?modal=/ui/search without JS).
+  document.addEventListener('click', function (e) {
+    var t = e.target instanceof Element ? e.target.closest('[data-job-retry]') : null;
+    if (!t || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    var ov = t.closest('.panel, .modal');
+    if (!ov) return;
+    e.preventDefault();
+    SM.close(ov);
+    SM.openModal('/ui/search', { title: 'New search' });
+  });
+
+  // ---- Background searches: top-bar chip, popover, toasts (GET /jobs/active) -------
+  // One fetch on every page load (so a running search survives reloads and
+  // navigation), then a poll every JOBS_POLL_MS ONLY while something runs
+  // (JOBS_HIDDEN_MS in a hidden tab, backoff on errors); nothing runs -> no
+  // polling. A search that finished unseen gets one toast ("View results" /
+  // "Details") and the chip shows "Search finished" until its panel is opened.
+  // Elements with data-active-job="<id>" (Runs → Running now, chip popover,
+  // the assistant's job card) are kept current from the same data.
+  var JOBS_POLL_MS = 5000;
+  var JOBS_HIDDEN_MS = 30000;
+  var JOBS_TOASTED_KEY = 'sm-jobs-toasted';
+  SM.jobs = (function () {
+    var chip = document.getElementById('jobchip');
+    var liveEl = document.getElementById('jobchip-live');
+    var textEl = chip ? chip.querySelector('[data-jobs-chip-text]') : null;
+    var shortEl = chip ? chip.querySelector('[data-jobs-chip-short]') : null;   // phones
+    var data = { jobs: [], other_jobs: [] };
+    var offset = 0, timer = null, clock = null, inflight = false, again = false, failures = 0;
+    var lastLive = '';
+
+    function list() { return (data.jobs || []).concat(data.other_jobs || []); }
+    function running() { return list().filter(function (j) { return j.status === 'running'; }); }
+    function anyRunning() { return running().length > 0; }
+    function nowS() { return Date.now() / 1000 - offset; }
+    function elapsed(j) { return j.status === 'running' ? nowS() - j.started_at : (j.elapsed_s || 0); }
+    function toasted() {
+      try { return JSON.parse(lsGet(JOBS_TOASTED_KEY) || '[]') || []; } catch (e) { return []; }
+    }
+    function markToasted(id) {
+      var t = toasted();
+      if (t.indexOf(id) === -1) { t.push(id); lsSet(JOBS_TOASTED_KEY, JSON.stringify(t.slice(-40))); }
+    }
+    function open(id) {
+      closePopover(false);
+      return SM.openPanel('/ui/job/' + encodeURIComponent(id), { title: 'Search progress' });
+    }
+    function setLive(t) {
+      if (liveEl && t !== lastLive) { lastLive = t; liveEl.textContent = t; }
+    }
+    function render() {
+      if (!chip) return;
+      var all = list(), run = running();
+      if (!all.length) {
+        chip.hidden = true;
+        setLive('');
+        stopClock();
+        if (pop && pop.anchor === chip) closePopover(false);
+        return;
+      }
+      chip.hidden = false;
+      var failed = all.filter(function (j) { return j.status === 'error'; });
+      var done = all.filter(function (j) { return j.status === 'done'; });
+      var cls = 'jobchip', text, short, status;
+      if (run.length > 1) { text = run.length + ' searches running'; short = run.length + ' running'; status = text; cls += ' is-running'; }
+      else if (run.length === 1) { short = fmtClock(elapsed(run[0])); text = 'Searching… ' + short; status = 'Search running'; cls += ' is-running'; }
+      else if (failed.length) { text = failed.length > 1 ? failed.length + ' searches failed' : 'Search failed'; short = 'Failed'; status = text; cls += ' is-error'; }
+      else { text = done.length > 1 ? done.length + ' searches finished' : 'Search finished'; short = 'Done'; status = text; cls += ' is-done'; }
+      if (run.length && (failed.length || done.length)) cls += ' has-news';
+      if (chip.className !== cls) chip.className = cls;
+      if (textEl && textEl.textContent !== text) textEl.textContent = text;
+      if (shortEl && shortEl.textContent !== short) shortEl.textContent = short;
+      chip.setAttribute('aria-haspopup', all.length > 1 ? 'menu' : 'dialog');
+      chip.title = all.length === 1 ? (all[0].subject_name ? all[0].subject_name + ': ' : '') + all[0].activity
+        : 'Show ' + all.length + ' searches';
+      setLive(status);
+      if (run.length) startClock(); else stopClock();
+      updateViews();
+    }
+    function startClock() { if (!clock) clock = setInterval(render, 1000); }
+    function stopClock() { if (clock) { clearInterval(clock); clock = null; } }
+    function updateViews() {
+      list().forEach(function (j) {
+        var els = document.querySelectorAll('[data-active-job="' + j.id + '"]');
+        for (var i = 0; i < els.length; i++) {
+          var a = els[i].querySelector('[data-active-job-activity]');
+          if (a && a.textContent !== j.activity) a.textContent = j.activity;
+          var b = els[i].querySelector('[data-active-job-bar]');
+          if (b) b.style.width = (j.status === 'done' ? 100 : (j.total_steps ? Math.round(j.done_steps * 100 / j.total_steps) : 0)) + '%';
+          var t = els[i].querySelector('[data-active-job-elapsed]');
+          if (t) t.textContent = fmtClock(elapsed(j));
+          els[i].setAttribute('data-job-state', j.status);
+        }
+      });
+    }
+    function popoverHtml() {
+      return '<div class="hd">Searches</div>' + list().map(function (j) {
+        var pct = j.status === 'done' ? 100 : (j.total_steps ? Math.round(j.done_steps * 100 / j.total_steps) : 0);
+        var other = (data.other_jobs || []).indexOf(j) !== -1;
+        return '<a class="item jobs-pop-item" role="menuitem" href="/job/' + esc(j.id) + '" data-panel="/ui/job/' + esc(j.id) +
+          '" data-title="Search progress" data-active-job="' + esc(j.id) + '" data-job-state="' + esc(j.status) + '">' +
+          '<span class="jp-top"><span class="job-spinner" aria-hidden="true"></span><b>' + esc(j.subject_name || j.query) + '</b>' +
+          (other ? '<span class="tag">Other subject</span>' : '') +
+          '<span class="muted num" data-active-job-elapsed>' + fmtClock(elapsed(j)) + '</span></span>' +
+          '<span class="jp-act" data-active-job-activity>' + esc(j.activity) + '</span>' +
+          '<span class="job-progress sm" aria-hidden="true"><span class="job-progress-bar" data-active-job-bar style="width:' + pct + '%"></span></span></a>';
+      }).join('');
+    }
+    function notify() {
+      var done = toasted();
+      list().forEach(function (j) {
+        if (j.status === 'running' || j.seen || done.indexOf(j.id) !== -1) return;
+        markToasted(j.id);
+        // Its panel (or page) is open: the viewer sees it already.
+        if (document.querySelector('[data-job-id="' + j.id + '"]')) { markJobSeen(j.id); return; }
+        var name = j.subject_name || j.query || 'your subject';
+        if (j.status === 'done') {
+          var s = j.summary || {};
+          SM.toast('Search for ' + name + ' finished: ' + plural(s.results || 0, 'result') + ', ' +
+            plural(s.new_negatives || 0, 'new negative'), 'ok', {
+            action: 'View results',
+            onAction: function () { markJobSeen(j.id).then(function () { location.assign(j.view_url || '/results'); }); }
+          });
+        } else {
+          SM.toast('Search for ' + name + ' failed: ' + (j.error || 'unknown error'), 'error', {
+            action: 'Details', onAction: function () { open(j.id); }
+          });
+        }
+      });
+    }
+    // Poll only while a search runs; slower while the tab is hidden.
+    function schedule() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!anyRunning()) return;
+      var ms = document.hidden ? JOBS_HIDDEN_MS : JOBS_POLL_MS;
+      if (failures) ms = Math.min(60000, ms * Math.pow(2, failures));
+      timer = setTimeout(refresh, ms);
+    }
+    function refresh() {
+      if (!chip) return Promise.resolve(data);
+      if (inflight) { again = true; return Promise.resolve(data); }
+      if (timer) { clearTimeout(timer); timer = null; }
+      inflight = true;
+      return fetch('/jobs/active', { headers: { 'Accept': 'application/json' }, cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) {
+          var ct = r.headers.get('content-type') || '';
+          if (!r.ok || ct.indexOf('application/json') === -1) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          inflight = false;
+          failures = 0;
+          if (typeof d.server_now === 'number') offset = Date.now() / 1000 - d.server_now;
+          data = d;
+          render();
+          notify();
+          if (again) { again = false; return refresh(); }
+          schedule();
+          return data;
+        }, function () {
+          inflight = false;
+          failures += 1;
+          if (again) { again = false; return refresh(); }
+          schedule();
+          return data;
+        });
+    }
+    if (chip) {
+      chip.addEventListener('click', function (e) {
+        e.preventDefault();
+        var all = list();
+        if (all.length === 1) { open(all[0].id); return; }
+        if (all.length > 1) SM.popover(chip, popoverHtml(), { className: 'jobs-pop' });
+      });
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && anyRunning()) refresh();
+      });
+      // A job panel loaded (a search was just started, or a finished one was
+      // opened and is now seen): refresh the chip.
+      document.addEventListener('sm:load', function (ev) {
+        if (/^\/ui\/job\//.test((ev.detail && ev.detail.url) || '')) refresh();
+      });
+      refresh();   // initial fetch on every page load: survives reloads and navigation
+    }
+    return { refresh: refresh, open: open, list: list, seen: markJobSeen };
+  })();
 
 
   // ---- Assistant (GET /assistant/panel, contract in docs/assistant.md) -------------
@@ -1441,6 +1703,7 @@
     function intent(entry, live) {
       var ev = entry.ev;
       if (ev.target === 'download') return null;          // shown as a report card
+      if (ev.quiet) return null;                           // shown as a job card (Open)
       var go = intentAction(ev);
       if (!go) return null;
       var row = node('assistant-tool assistant-intent', '<button type="button" class="btn small">' + esc(ev.label || 'Open') + '</button>');
@@ -1511,11 +1774,35 @@
             '<span><span class="swatch neg" aria-hidden="true"></span>' + esc(r.negative) + ' negative</span>' +
             '<span><span class="swatch neu" aria-hidden="true"></span>' + esc(r.neutral) + ' neutral</span></div></div>';
         }).join('');
+      } else if (ev.kind === 'job') {
+        // A confirmed start_search: status sentence + progress + Open, kept
+        // current by SM.jobs (data-active-job) while it runs.
+        html = '<p class="assistant-card-title">' + esc(d.title || 'Search') + '</p>' +
+          '<p class="ac-job-act" data-active-job-activity>' + esc(d.activity || 'Starting search…') + '</p>' +
+          '<span class="job-progress sm" aria-hidden="true"><span class="job-progress-bar" data-active-job-bar style="width:0%"></span></span>' +
+          '<div class="ac-actions"><button type="button" class="btn small" data-job-open>Open</button></div>';
       } else return null;
       var el = node('assistant-card assistant-card-' + ev.kind, html);
       el.setAttribute('data-card-kind', ev.kind);
       el._entry = entry;
+      if (ev.kind === 'job' && d.job_id) jobCard(el, d.job_id);
       return el;
+    }
+    function jobCard(el, id) {
+      el.setAttribute('data-active-job', id);
+      el.querySelector('[data-job-open]').addEventListener('click', function () {
+        openOverlay('panel', '/ui/job/' + encodeURIComponent(id), 'Search progress');
+      });
+      // Current state once (a card restored from the history may be stale).
+      fetch('/job/' + encodeURIComponent(id) + '/status', { headers: { 'Accept': 'application/json' }, cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (s) {
+          var a = el.querySelector('[data-active-job-activity]'), b = el.querySelector('[data-active-job-bar]');
+          if (!s) { if (a) a.textContent = 'This search is no longer tracked; its results are under Runs.'; return; }
+          if (a && s.activity) a.textContent = s.activity;
+          if (b) b.style.width = (s.status === 'done' ? 100 : (s.total_steps ? Math.round(s.done_steps * 100 / s.total_steps) : 0)) + '%';
+          el.setAttribute('data-job-state', s.status);
+        }, function () {});
     }
 
     // Confirmation cards; editable fields (ev.edit) are sent back as `args`.
@@ -1787,6 +2074,7 @@
         hist.messages.push({ role: 'assistant', content: msg });
         save();
         if (res.status === 200) applyEvents(d.events, true);
+        if (res.status === 200 && d.result && d.result.job_id && SM.jobs) SM.jobs.refresh();   // the top-bar chip appears
         save();
         scroll();
         runLive();
