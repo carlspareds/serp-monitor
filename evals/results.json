@@ -1,0 +1,265 @@
+{
+  "serp_parsing": {
+    "metric": "serp_parsing_accuracy",
+    "n_cases": 4,
+    "accuracy": 1.0,
+    "failures": []
+  },
+  "classification": {
+    "metric": "classification_accuracy",
+    "n_cases": 11,
+    "accuracy": 1.0,
+    "per_class": {
+      "positive": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "negative": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "neutral": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    }
+  },
+  "real_data_classification": {
+    "metric": "real_data_classification_accuracy",
+    "n_cases": 53,
+    "accuracy": 0.4528301886792453,
+    "per_class": {
+      "positive": {
+        "precision": null,
+        "recall": 0.0,
+        "f1": null
+      },
+      "negative": {
+        "precision": null,
+        "recall": 0.0,
+        "f1": null
+      },
+      "neutral": {
+        "precision": 0.4528301886792453,
+        "recall": 1.0,
+        "f1": 0.6233766233766235
+      }
+    },
+    "misclassified": [
+      {
+        "url": "https://www.apple.com/newsroom/2026/04/tim-cook-to-become-apple-executive-chairman-john-ternus-to-become-apple-ceo/",
+        "title": "Tim Cook to become Apple Executive Chairman John Ternus to become Apple CEO",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.foxbusiness.com/markets/tim-cooks-last-day-apple-ceo-how-he-led-tech-giants-rise-4t",
+        "title": "Tim Cook steps down as Apple CEO after 15 years, names a successor",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://techcrunch.com/2026/08/31/tim-cooks-parting-message-apple-is-in-the-hands-of-a-product-builder/",
+        "title": "Tim Cook's parting message: Apple is in the hands of a product builder",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://cbsnews.com/sanfrancisco/tag/tim-cook/3",
+        "title": "Newspapers Largely Shun Apple's News Subscription Service",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.faa.gov/newsroom/updates-boeing-737-9-max-aircraft",
+        "title": "Updates on Boeing 737-9 MAX Aircraft",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://boeing.mediaroom.com/2026-07-20-SMBC-Aviation-Capital-Orders-100-Boeing-737-MAX-Jets",
+        "title": "SMBC Aviation Capital Orders 100 Boeing 737 MAX Jets",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://boeing.mediaroom.com/2026-01-13-Aviation-Capital-Group-Orders-50-Boeing-737-MAX-Jets",
+        "title": "Aviation Capital Group Orders 50 Boeing 737 MAX Jets",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.cbsnews.com/chicago/news/boeings-newest-737-first-flight",
+        "title": "Watch CBS News: Boeing's newest 737 first flight",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://cbsnews.com/video/faa-lifts-grounding-order-on-boeing-737-max",
+        "title": "Watch CBS News: FAA lifts grounding order on Boeing 737 Max",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.commondreams.org/tag/elon-musk",
+        "title": "Elon Musk on Common Dreams",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.youtube.com/watch?v=5PIbIk7I4QQ",
+        "title": "Elon Musk UNLEASHES his AI VISION at the G20: the FUTURE is CLOSER than YOU THINK",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.mheducation.com/highered/blog/2025/07/after-the-scandal--wells-fargo-is-allowed-to-grow-again.html",
+        "title": "After the Scandal: Wells Fargo Is Allowed to Grow Again",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.congress.gov/crs-product/IF11129",
+        "title": "Wells Fargo - A Timeline of Recent Consumer Protection and Corporate Governance Scandals",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.learnsignal.com/blog/wells-fargo-fake-accounts-scandal-overview/",
+        "title": "The Wells Fargo Fake Accounts Scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.gsb.stanford.edu/faculty-research/publications/wells-fargo-cross-selling-scandal",
+        "title": "The Wells Fargo Cross-Selling Scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.bankingdive.com/news/occ-3-ex-wells-fargo-execs-fine-18-million-russ-anderson-mclinko-julian-fake-accounts/737386/",
+        "title": "3 ex-Wells Fargo execs fined $18.5M over fake-accounts scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.forrester.com/cx-cast/78-what-cx-pros-can-learn-from-the-wells-fargo-scandal",
+        "title": "78: what CX pros can learn from the Wells Fargo scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.npr.org/series/508986161/investigating-the-wells-fargo-scandal/archive",
+        "title": "Investigating the Wells Fargo Scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://cbsnews.com/news/john-stumpf-exits-wells-fargo-after-account-scandal",
+        "title": "John Stumpf exits Wells Fargo after account scandal",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.nbcnews.com/news/amp/ncna793016",
+        "title": "Wells Fargo Picks First Woman to Lead Board as Scandal Worsens",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.outsideonline.com/outdoor-gear/gear-news/patagonia-axios-harris-poll-2023/",
+        "title": "Patagonia Has the Best Reputation of Any Business in America, Poll Shows",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.fashionbeans.com/article/is-patagonia-a-good-brand/",
+        "title": "Is Patagonia a Good Brand? Why This Outdoor Brand Stands Above the Rest",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.inc.com/jason-aten/patagonia-was-just-ranked-most-respected-brand-this-unconventional-idea-from-its-founder-explains-why.html",
+        "title": "Patagonia Was Just Ranked the Most Respected Brand",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://thesustainableagency.com/blog/is-patagonia-greenwashing/",
+        "title": "Is Patagonia greenwashing? A look at 2025's Impact Report",
+        "expected": "negative",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.forbes.com/sites/dougsundheim/2023/12/12/how-patagonia-became-the-most-reputable-brand-in-the-united-states/",
+        "title": "How Patagonia Became The Most Reputable Brand In The United States",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.axios.com/2023/05/25/patagonia-harris-poll-reputation",
+        "title": "Patagonia eco-brand unscathed by polarized climate",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.taylorswift.com/",
+        "title": "The Official Website of Taylor Swift",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.cbsnews.com/newyork/news/taylor-swift-to-announce-really-cool-news-during-live-web-chat",
+        "title": "Taylor Swift to announce really cool news during live web chat",
+        "expected": "positive",
+        "predicted": "neutral"
+      },
+      {
+        "url": "https://www.cbsnews.com/news/taylor-swift-is-working-on-new-music-according-to-gigi-hadid",
+        "title": "Taylor Swift is working on new music according to Gigi Hadid",
+        "expected": "positive",
+        "predicted": "neutral"
+      }
+    ]
+  },
+  "alert_rules": {
+    "metric": "alert_rule_correctness",
+    "n_scenarios": 3,
+    "pass_rate": 1.0,
+    "scenarios": [
+      {
+        "name": "single_negative_below_threshold",
+        "expected_threshold_alert": false,
+        "got_threshold_alert": false,
+        "pass": true
+      },
+      {
+        "name": "two_negatives_cross_threshold",
+        "expected_threshold_alert": true,
+        "got_threshold_alert": true,
+        "pass": true
+      },
+      {
+        "name": "brand_new_negative_vs_previous_run",
+        "expected_negative_new_alert": true,
+        "got_negative_new_alert": true,
+        "pass": true
+      }
+    ]
+  },
+  "processing_latency": {
+    "metric": "processing_latency_ms",
+    "batch_size": 20,
+    "repeats": 15,
+    "mean_ms": 153.61,
+    "p95_ms": 243.12,
+    "note": "classify_batch + save_results only -- excludes Apify scrape time"
+  },
+  "not_computed": {
+    "scraping_success_rate": "Requires a live, paid Apify API key and real network access. Not run here (no credentials ship with this repo, and it would mean making real paid API calls from a public CI). Run scripts/smoke_apify.py with your own APIFY_API_KEY to check this against a live actor run.",
+    "end_to_end_search_latency": "The dominant cost of a real search is Apify's own actor execution time (observed 10-60s in the original private deployment this project was extracted from), which this repo has no way to reproduce honestly without live credentials. See processing_latency above for what IS measured: our own code's processing time given already-fetched results."
+  }
+}

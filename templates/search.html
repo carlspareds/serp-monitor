@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class='card'>
+  <p class='muted'>Searches the titles and descriptions of results already stored. To run a new
+    Google/Bing search, use <b>New search</b> in <a href='/results'>Results</a>.</p>
+  <form action='/search-text' method='get'>
+    <label>Text: <input type='text' name='q' size='40' value='{{ q }}' placeholder='a word from a title or description'></label>
+    <button type='submit'>Find</button>
+  </form>
+  {% if error %}
+  <p class='muted err'>{{ error }}</p>
+  {% endif %}
+</div>
+{% if q %}
+<div class='card'>
+  <h2>Results ({{ total }})</h2>
+  {% if total == 0 %}
+  <p class='muted'>No results for "{{ q }}".</p>
+  {% endif %}
+  {% for cls, rows in groups %}
+  {% if rows %}
+  <h3><span class='pill {{ cls }}'><span class='dot' aria-hidden='true'></span>{{ cls }}</span> ({{ rows|length }})</h3>
+  <div class='table-wrap'>
+  <table><tr><th>Title / Domain</th><th>Description</th><th>Country</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td><a href='{{ r.url }}' target='_blank' rel='noopener noreferrer'>{{ r.title or r.url }}</a><br>
+        <span class='muted'>{{ r.domain }}</span></td>
+      <td>{{ r.description }}</td>
+      <td>{{ (r.country_code or '')|upper }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,18 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ title }} · SERP Monitor</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head><body{% if open_dialog %} data-open-dialog="{{ open_dialog }}"{% endif %}>
+{{ shell.chrome|safe }}
+{{ shell.topbar|safe }}
+<div class="shell">
+{{ shell.rail|safe }}
+<main class="main" id="main">{{ shell.banner|safe }}{{ flash_html()|safe }}
+{% block head %}<div class="page-head"><div class="page-title"><h1>{{ title }}</h1>{% if subtitle %}<div class="sub">{{ subtitle }}</div>{% endif %}</div>{% block actions %}{% endblock %}</div>{% endblock %}
+<div class="page-body">
+{% block content %}{% endblock %}
+</div>
+</main></div>
+<script src="/static/app.js"></script>
+</body></html>

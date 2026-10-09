@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body class="landing-body">
+
+  <!-- Header Navigation -->
+  <header class="landing-nav">
+    <a href="/onboarding" class="landing-brand">
+      <span class="landing-brand-icon">{{ page_icon('compass', 18) }}</span>
+      <span>SERP Monitor · Getting started guide</span>
+    </a>
+    <nav class="landing-links">
+      <a href="/setup">Setup wizard</a>
+      <a href="/" class="btn-link btn-sm">{{ page_icon('chart', 15) }} Open Dashboard</a>
+      <button type="button" class="btn-sm btn-ghost" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">{{ page_icon('theme', 16) }}</button>
+    </nav>
+  </header>
+
+  <main class="landing-container" style="padding-top: 32px;">
+    {{ demo_mode_banner()|safe }}
+
+    <!-- Onboarding Progress Tracker -->
+    <div class="onboarding-progress">
+      <div class="onboarding-step-indicator done">
+        <span class="onboarding-badge-num">✓</span>
+        <span>1. Install &amp; Boot</span>
+      </div>
+      <div class="onboarding-step-indicator active">
+        <span class="onboarding-badge-num">2</span>
+        <span>2. Choose Mode</span>
+      </div>
+      <div class="onboarding-step-indicator">
+        <span class="onboarding-badge-num">3</span>
+        <span>3. Target Configuration</span>
+      </div>
+      <div class="onboarding-step-indicator">
+        <span class="onboarding-badge-num">4</span>
+        <span>4. Explore Features</span>
+      </div>
+    </div>
+
+    <!-- Intro Header -->
+    <div class="card" style="border-left: 4px solid var(--accent); margin-bottom: 24px;">
+      <h1 style="font-size: 26px; margin: 0 0 8px; color: var(--brand);">Welcome to SERP Monitor!</h1>
+      <p style="margin: 0; font-size: 14.5px; color: var(--fg); line-height: 1.5;">
+        This guide covers what is configured and where to go next. You can explore the pre-loaded demo data right now,
+        or add an Apify key to run real Google and Bing searches.
+      </p>
+    </div>
+
+    <!-- Step 2: Choose Your Path -->
+    <h2 style="font-size: 20px; color: var(--brand); margin: 30px 0 14px;">Step 2: Choose Your Experience Path</h2>
+    <div class="onboarding-choice-grid">
+      <!-- Option A: Demo Mode -->
+      <div class="onboarding-choice-card {% if is_demo %}featured{% endif %}">
+        <div style="margin-bottom: 12px; color:var(--accent-text)">{{ page_icon('flask', 30) }}</div>
+        <h3 style="margin: 0 0 6px; font-size: 18px; color: var(--brand);">Instant Demo Mode</h3>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13.5px; line-height: 1.5;">
+          Explore a synthetic scenario for the fictional Jordan Ashworth: four weekly US runs, results waiting
+          in the review queue, 5 alerts, 3 evidence snapshots, 2 timeline events, one win on Analysis and
+          2 notes on the Notes board. No API keys required.
+        </p>
+        <div style="margin-bottom: 18px;">
+          <span class="pill {% if is_demo %}ok{% else %}neutral{% endif %}">
+            {% if is_demo %}Currently Active{% else %}Pre-loaded{% endif %}
+          </span>
+        </div>
+        <a href="/" class="btn-link btn-sm" style="display:inline-block;">Launch Demo Dashboard →</a>
+      </div>
+
+      <!-- Option B: Real Search Mode -->
+      <div class="onboarding-choice-card {% if not is_demo %}featured{% endif %}">
+        <div style="margin-bottom: 12px; color:var(--accent-text)">{{ page_icon('bolt', 30) }}</div>
+        <h3 style="margin: 0 0 6px; font-size: 18px; color: var(--brand);">Production Live Monitoring</h3>
+        <p class="muted" style="margin: 0 0 16px; font-size: 13.5px; line-height: 1.5;">
+          Add an Apify API key to run real Google and Bing searches, then optionally add notification channels
+          (Email, Telegram, Slack, ntfy) and an AI provider (Gemini or OpenAI-compatible). The demo data stays
+          until you delete the database.
+        </p>
+        <div style="margin-bottom: 18px;">
+          <span class="pill {% if has_apify %}ok{% else %}warning{% endif %}">
+            {% if has_apify %}Apify Key Connected{% else %}Apify Key Needed{% endif %}
+          </span>
+        </div>
+        <a href="/setup?step=apify" class="btn-link btn-sm" style="display:inline-block;">Configure Scraper Key →</a>
+      </div>
+    </div>
+
+    <!-- Step 3: Interactive System Checklist -->
+    <h2 style="font-size: 20px; color: var(--brand); margin: 34px 0 14px;">Step 3: System Status &amp; Target Configuration</h2>
+    <div class="checklist-card">
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('check', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Application &amp; Local Database</h4>
+          <p>FastAPI server running with SQLite storage (<code>data/seo_dashboard.db</code> by default).</p>
+        </div>
+        <span class="pill ok">Ready</span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('target', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Tracked name &amp; countries</h4>
+          <p>
+            Currently tracking: <b>{{ tracked_query }}</b> (countries: <b>{{ tracked_countries }}</b>), used by the weekly run.
+            <a href="/settings#projects">Change it in Settings → Projects and subjects</a>
+          </p>
+        </div>
+        <span class="pill info">{{ tracked_countries }}</span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('globe', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Your own domains</h4>
+          <p>
+            Add your own domains under each subject in <a href="/settings#domains">Settings → Projects and subjects → Domains</a>: results on them are labelled positive.
+            Each subject has its own lists; the demo subject comes with example domains.
+          </p>
+        </div>
+        <span class="pill info">Recommended</span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('search', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Search Engine Scraper (Apify)</h4>
+          <p>
+            {% if has_apify %}
+            Apify key set: searches run through Apify's Google and Bing actors.
+            {% else %}
+            Demo mode: no Apify key, so real searches will fail. Add one in <a href="/setup?step=apify">Setup</a> (Apify has a free tier).
+            {% endif %}
+          </p>
+        </div>
+        <span class="pill {% if has_apify %}ok{% else %}neutral{% endif %}">
+          {% if has_apify %}Active{% else %}Demo Mode{% endif %}
+        </span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('sparkle', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Optional AI provider</h4>
+          <p>
+            {% if has_ai %}
+            {{ ai_provider.label }} is set (model <code>{{ ai_provider.model }}</code> on {{ ai_provider.host }}):
+            same-name detection, severity scores, and the manual "Reclassify with AI" button are available.
+            Search-time labels still come from the rules.
+            <a href="/settings#ai">Change in Settings → AI provider</a>.
+            {% else %}
+            Rules only (domain lists + keywords). An optional AI provider (Gemini or OpenAI-compatible, including a
+            local Ollama or LM Studio server) adds same-name detection, severity scores, and on-demand AI reclassification.
+            <a href="/settings#ai">Set up in Settings → AI provider</a>.
+            {% endif %}
+          </p>
+        </div>
+        <span class="pill {% if has_ai %}ok{% else %}neutral{% endif %}">
+          {% if has_ai %}{{ ai_provider.label }}{% else %}Rules only{% endif %}
+        </span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('alerts', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Alert channels</h4>
+          <p>
+            {% if has_alerts %}
+            Alerts of severity <b>{{ routed|join(", ") }}</b> go to a configured channel.
+            Each severity is routed to one channel in
+            <a href="/settings#routing">Settings → Alert routing</a> (by default, warnings go to email).
+            {% elif channels_configured %}
+            Configured: {{ channels_configured|join(", ") }}, but no severity is routed to it yet.
+            Pick a channel per severity in <a href="/settings#routing">Settings → Alert routing</a>.
+            {% else %}
+            No channel configured. Connect Email, Telegram, Slack or ntfy in
+            <a href="/settings#notifications">Settings → Notifications</a>, then route each severity
+            to a channel under Alert routing (by default, warnings go to email).
+            {% endif %}
+          </p>
+        </div>
+        <span class="pill {% if has_alerts %}ok{% else %}warning{% endif %}">
+          {% if has_alerts %}Configured{% else %}Optional{% endif %}
+        </span>
+      </div>
+
+      <div class="checklist-item">
+        <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('chart', 20) }}</div>
+        <div class="checklist-content" style="flex:1;">
+          <h4>Search Run History</h4>
+          <p>
+            {% if has_runs %}
+            {{ runs_count }} search run(s) recorded in the database. <a href="/runs">View all runs →</a>
+            {% else %}
+            No search runs yet. Run your first one with <b>New search</b> on the Results page (or the button below).
+            {% endif %}
+          </p>
+        </div>
+        <span class="pill {% if has_runs %}ok{% else %}neutral{% endif %}">
+          {% if has_runs %}{{ runs_count }} Runs{% else %}None{% endif %}
+        </span>
+      </div>
+    </div>
+
+    <!-- Step 4: Workspace Feature Guide -->
+    <h2 style="font-size: 20px; color: var(--brand); margin: 34px 0 14px;">Step 4: Tour Your Core Workspace Tools</h2>
+    <p class="muted" style="margin: 0 0 20px; font-size: 14px;">
+      The main pages of the dashboard:
+    </p>
+
+    <div class="landing-grid-4">
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('search', 24) }}</div>
+        <h3><a href="/results">Results</a></h3>
+        <p>
+          Every stored result with its position, snippet, label, and confidence.
+          Filter by country, label, or engine.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('trend', 24) }}</div>
+        <h3><a href="/">Overview</a></h3>
+        <p>
+          How the share of positive and negative results changes run to run, Wins, and what changed since the last run.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('compare', 24) }}</div>
+        <h3><a href="/diff">Compare</a></h3>
+        <p>
+          Compare two search dates side by side to see what appeared, moved, or disappeared.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('scale', 24) }}</div>
+        <h3><a href="/review">Review Queue</a></h3>
+        <p>
+          Results no rule could decide wait here for a human label. A human verdict is kept on later reclassification.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('camera', 24) }}</div>
+        <h3><a href="/evidence">Evidence</a></h3>
+        <p>
+          Downloaded HTML of newly negative result pages, with each file's SHA-256 hash.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('calendar', 24) }}</div>
+        <h3><a href="/timeline">Timeline</a></h3>
+        <p>
+          Correlate real-world events (press releases, product launches, PR responses) with ranking changes over time.
+        </p>
+      </div>
+
+      <div class="landing-card">
+        <div class="landing-card-icon" style="color:var(--accent-text)">{{ page_icon('reports', 24) }}</div>
+        <h3><a href="/export">Export</a></h3>
+        <p>
+          Download a PDF summary or an Excel workbook of the stored results.
+        </p>
+      </div>
+    </div>
+
+    <!-- Final Call to Action -->
+    <div class="card" style="margin-top: 36px; text-align:center; padding:32px 20px; background:linear-gradient(135deg, var(--card) 0%, var(--accent-soft) 100%);">
+      <h3 style="font-size: 22px; color: var(--brand); margin: 0 0 10px;">Ready to Explore?</h3>
+      <p class="muted" style="margin: 0 0 20px; font-size: 14px;">
+        Open the dashboard, or run a search once an Apify key is set.
+      </p>
+      <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+        <a href="/" class="btn-link">{{ page_icon('chart', 15) }} Go to Dashboard</a>
+        <a href="/search_page" class="btn-link btn-ghost">{{ page_icon('search', 15) }} Run a Search</a>
+        <a href="/setup" class="btn-link btn-ghost">{{ page_icon('settings', 15) }} Setup wizard</a>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="landing-footer">
+    <div class="landing-container">
+      <p style="margin:0 0 10px; font-weight:600; color:var(--brand);">SERP Monitor · Getting started guide</p>
+      <div>
+        <a href="/">Home</a>
+          <a href="/setup">Setup wizard</a>
+        <a href="/results">Results</a>
+        <a href="/settings">Settings</a>
+      </div>
+      <p style="margin:16px 0 0; color:var(--muted); font-size:12px;">Released under the MIT License · Self-hosted</p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

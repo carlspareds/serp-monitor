@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Pre-commit gate: ruff (whole repo), pytest (whole suite), and gitleaks on
+# what's staged (if gitleaks is installed). Any failure aborts the commit.
+# Install (once per clone): git config core.hooksPath scripts/hooks
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+status=0
+
+echo "[pre-commit] ruff check ."
+.venv/bin/ruff check . || { echo "[pre-commit] ruff FAILED"; status=1; }
+
+echo "[pre-commit] pytest -q"
+.venv/bin/pytest -q || { echo "[pre-commit] pytest FAILED"; status=1; }
+
+GITLEAKS="$(command -v gitleaks || echo "$HOME/.local/bin/gitleaks")"
+if [ -x "$GITLEAKS" ]; then
+    echo "[pre-commit] gitleaks protect --staged"
+    "$GITLEAKS" protect --staged --no-banner || { echo "[pre-commit] gitleaks FAILED"; status=1; }
+else
+    echo "[pre-commit] gitleaks not installed, skipping secret scan (recommended: https://github.com/gitleaks/gitleaks)"
+fi
+
+[ $status -ne 0 ] && echo "[pre-commit] commit aborted: fix the failures above"
+exit $status
