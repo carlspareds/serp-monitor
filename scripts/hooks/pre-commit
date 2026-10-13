@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Pre-commit gate: secret scan of what's staged (gitleaks), then ruff.
+# Any failure aborts the commit. The full test suite runs in CI (and with
+# `make test`); set PRECOMMIT_TESTS=1 to also run it here.
+# Install (once per clone): git config core.hooksPath scripts/hooks
+# gitleaks: https://github.com/gitleaks/gitleaks#installing
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+status=0
+
+GITLEAKS="$(command -v gitleaks || echo "$HOME/.local/bin/gitleaks")"
+if [ -x "$GITLEAKS" ]; then
+    echo "[pre-commit] gitleaks (staged changes)"
+    "$GITLEAKS" git --pre-commit --staged --redact --no-banner \
+        || { echo "[pre-commit] gitleaks FAILED: a secret is staged"; status=1; }
+else
+    echo "[pre-commit] gitleaks not installed: NOT scanning for secrets (install it, see SECURITY.md)"
+fi
+
+echo "[pre-commit] ruff check ."
+.venv/bin/ruff check . || { echo "[pre-commit] ruff FAILED"; status=1; }
+
+if [ "${PRECOMMIT_TESTS:-0}" = "1" ]; then
+    echo "[pre-commit] pytest -q"
+    .venv/bin/pytest -q || { echo "[pre-commit] pytest FAILED"; status=1; }
+fi
+
+[ $status -ne 0 ] && echo "[pre-commit] commit aborted: fix the failures above"
+exit $status

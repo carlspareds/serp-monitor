@@ -1,0 +1,50 @@
+# Secrets & local configuration (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data: database, evidence, exports, backups
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+*.db.*
+*.bak
+*.backup
+exports/
+*.log
+
+# Live eval runs (only the documented offline results are versioned)
+evals/**/results/live*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Temporary screenshots / browser artefacts
+screenshots-tmp/
+*.tmp.png
+playwright-report/
+test-results/
+
+# Local agent/tooling state
+.claude/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

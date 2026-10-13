@@ -1,0 +1,27 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# S608 (SECURITY.md, item 13): flags SQL built with string formatting. Every
+# hit in this repo interpolates only whitelisted identifiers or "?"
+# placeholders (subject_id = ?, column lists from code) and carries a
+# `# noqa: S608 -- <why>` saying which; values are always bound parameters.
+extend-select = ["S608"]
+# B008: Form(...)/Depends(...) in defaults is FastAPI's standard idiom.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# RUF012: legacy mutable class-level dicts on the Database mixins.
+"src/database/*.py" = ["RUF012"]
+# A defensive try/except/pass around an optional openpyxl feature (the donut
+# charts holeSize, which isnt supported on every openpyxl build) that must
+# not bring down the export if it fails.
+"src/export/excel_exporter.py" = ["S110"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Third-party deprecations raised by fastapi/starlette's TestClient itself,
+    # not by this code base -- silenced until upstream moves off them.
+    "ignore:Using .httpx. with .starlette.testclient. is deprecated",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
