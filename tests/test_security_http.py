@@ -340,19 +340,35 @@ def test_backups_and_exports_hold_no_env_secret(client, seeded_db, secret_env):
         _no_sentinel(body, path)
 
 
-def test_log_records_are_redacted(secret_env, capsys):
+def test_log_records_are_redacted(secret_env):
+    """The handler setup() installs (JSON formatter + redacting filter),
+    on its own stream so the test doesn't depend on which stdout the
+    process-wide handler captured."""
+    import io
+
     from dashboard import logging_setup
     logging_setup.setup()
+    root_filters = [f for h in logging.getLogger().handlers for f in h.filters
+                    if isinstance(f, logging_setup.RedactingFilter)]
+    assert root_filters, "setup() must put the redacting filter on the root handler"
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setFormatter(logging_setup.JsonFormatter())
+    handler.addFilter(logging_setup.RedactingFilter())
     log = logging.getLogger("leaky")
-    log.error("key=%s url=%s", SENTINELS["APIFY_API_KEY"], SENTINELS["SLACK_WEBHOOK_URL"],
-              extra={"detail": f"token {SENTINELS['TELEGRAM_BOT_TOKEN']}"})
+    log.addHandler(handler)
     try:
-        raise ValueError(f"bad {SENTINELS['OPENAI_API_KEY']}")
-    except ValueError:
-        log.exception("failed")
-    log.info("api_key=sk-unknownbutkeyshaped0123456789 and Bearer abcdefghijklmnop")  # gitleaks:allow (fake test value)
-    out = capsys.readouterr().out
-    assert "leaky" in out
+        log.error("key=%s url=%s", SENTINELS["APIFY_API_KEY"], SENTINELS["SLACK_WEBHOOK_URL"],
+                  extra={"detail": f"token {SENTINELS['TELEGRAM_BOT_TOKEN']}"})
+        try:
+            raise ValueError(f"bad {SENTINELS['OPENAI_API_KEY']}")
+        except ValueError:
+            log.exception("failed")
+        log.error("api_key=sk-unknownbutkeyshaped0123456789 and Bearer abcdefghijklmnop")  # gitleaks:allow (fake test value)
+    finally:
+        log.removeHandler(handler)
+    out = buf.getvalue()
+    assert out.count('"logger": "leaky"') == 3
     _no_sentinel(out, "logs")
     assert "sk-unknownbutkeyshaped" not in out and "abcdefghijklmnop" not in out
     assert "<redacted>" in out
