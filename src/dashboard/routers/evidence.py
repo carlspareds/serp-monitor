@@ -12,6 +12,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
+from common.validate import http_url
 from dashboard import ui
 from dashboard.context import redirect_with_flash, safe_next
 from dashboard.deps import db
@@ -105,9 +106,12 @@ def _capture_failed_message(url: str) -> str:
 
 
 @router.post("/evidence/capture", response_class=HTMLResponse)
-def evidence_capture(request: Request, url: str = Form(...), result_id: int | None = Form(None),
-                     next: str = Form("/results")):
+def evidence_capture(request: Request, url: str = Form(..., max_length=2048), result_id: int | None = Form(None),
+                     next: str = Form("/results", max_length=2048)):
     back = safe_next(next, "/results")
+    if http_url(url) is None:
+        return redirect_with_flash(back, "Couldn't save a snapshot: that isn't a web page "
+                                         "address.", "error")
     row = capture_url(db, url, trigger="manual", result_id=result_id)
     if row is None:
         return redirect_with_flash(back, _capture_failed_message(url), "error")

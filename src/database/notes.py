@@ -51,7 +51,7 @@ class NotesMixin:
         try:
             cur.execute("BEGIN IMMEDIATE")
             cur.execute(
-                f"SELECT status FROM url_notes WHERE url = ? AND {subject_clause}",
+                f"SELECT status FROM url_notes WHERE url = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 (url, *subject_params),
             )
             row = cur.fetchone()
@@ -68,12 +68,12 @@ class NotesMixin:
                 status = normalize_note_status(row["status"])
                 if status == "open" and not (note or assignee or due_date):
                     cur.execute(
-                        f"DELETE FROM url_notes WHERE url = ? AND {subject_clause}",
+                        f"DELETE FROM url_notes WHERE url = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                         (url, *subject_params),
                     )
                 else:
                     cur.execute(
-                        "UPDATE url_notes SET note = ?, updated_at = ?, assignee = ?, "
+                        "UPDATE url_notes SET note = ?, updated_at = ?, assignee = ?, "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                         f"due_date = ? WHERE url = ? AND {subject_clause}",
                         (note, now, assignee, due_date, url, *subject_params),
                     )
@@ -90,7 +90,7 @@ class NotesMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT url, status, note, updated_at FROM url_notes WHERE {subject_clause}",
+            f"SELECT url, status, note, updated_at FROM url_notes WHERE {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             subject_params,
         )
         out = {r["url"]: {"status": r["status"], "note": r["note"],
@@ -109,7 +109,7 @@ class NotesMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT rowid AS id, * FROM url_notes WHERE {subject_clause} ORDER BY updated_at DESC",
+            f"SELECT rowid AS id, * FROM url_notes WHERE {subject_clause} ORDER BY updated_at DESC",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             subject_params,
         )
         rows = [dict(r) for r in cur.fetchall()]
@@ -146,7 +146,7 @@ class NotesMixin:
         try:
             cur.execute("BEGIN IMMEDIATE")
             cur.execute(
-                f"SELECT status FROM url_notes WHERE rowid = ? AND {subject_clause}",
+                f"SELECT status FROM url_notes WHERE rowid = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 (note_id, *subject_params),
             )
             row = cur.fetchone()
@@ -156,7 +156,7 @@ class NotesMixin:
             from_status = normalize_note_status(row["status"])
             now = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
             cur.execute(
-                f"UPDATE url_notes SET status = ?, updated_at = ? WHERE rowid = ? AND {subject_clause}",
+                f"UPDATE url_notes SET status = ?, updated_at = ? WHERE rowid = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 (to_status, now, note_id, *subject_params),
             )
             cur.execute(
@@ -180,7 +180,7 @@ class NotesMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM note_history WHERE note_id = ? AND {subject_clause} "
+        cur.execute(f"SELECT * FROM note_history WHERE note_id = ? AND {subject_clause} "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     f"ORDER BY id DESC", (note_id, *subject_params))
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()

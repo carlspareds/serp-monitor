@@ -293,12 +293,12 @@ def test_login_is_throttled_after_repeated_failures(client, seeded_db, monkeypat
     assert "sid" in ok.cookies
 
     # Once the lockout expires, the right password works again.
-    for entry in auth_module._FAILED_LOGINS.values():
-        entry[1] = time.monotonic() - 1
+    for entry in auth_module._FAILED_LOGINS._d.values():
+        entry[2] = time.monotonic() - 1
     ok = client.post("/login", data={"username": "alice", "password": "alice-password"},
                      follow_redirects=False)
     assert ok.headers["location"] == "/"
-    assert not auth_module._FAILED_LOGINS
+    assert ("alice", "127.0.0.1") not in auth_module._FAILED_LOGINS
 
 
 # --------------------------------------------------------------------- #

@@ -32,6 +32,7 @@ import requests
 
 from assistant import cards, prompts, tools
 from assistant.pending import STORE, PendingStore
+from common.redact import redact
 from processing import ai_status, llm
 
 log = logging.getLogger("assistant")
@@ -70,7 +71,9 @@ def scrub_secrets(text: str, secrets: list[str] | None = None) -> str:
     for s in secrets if secrets is not None else secret_values():
         if s in text:
             text = text.replace(s, "<secret>")
-    return text
+    # Key-like shapes (sk-..., apify_api_..., bot tokens) even when they are
+    # not the value of a configured variable -- see common.redact.
+    return redact(text, [])
 
 
 def scrub_obj(obj, secrets: list[str] | None = None):

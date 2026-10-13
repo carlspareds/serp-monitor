@@ -712,7 +712,7 @@ async def ui_api_key_new():
 # Writes (PRG)
 # --------------------------------------------------------------------- #
 @router.post("/settings", tags=["settings"])
-async def save_settings(request: Request, query: str = Form(""), countries: list[str] = Form(default=[])):
+async def save_settings(request: Request, query: str = Form("", max_length=200), countries: list[str] = Form(default=[])):
     """Legacy form: tracked query + countries of the ACTIVE subject."""
     query = " ".join(query.split())
     if not query:
@@ -726,7 +726,7 @@ async def save_settings(request: Request, query: str = Form(""), countries: list
 
 
 @router.post("/settings/apify-budget", tags=["settings"])
-async def save_apify_budget(request: Request, budget: str = Form("0")):
+async def save_apify_budget(request: Request, budget: str = Form("0", max_length=64)):
     try:
         value = max(float(budget or 0), 0.0)
     except ValueError:
@@ -746,7 +746,7 @@ def _parse_review(review_threshold: str) -> float:
 
 
 @router.post("/settings/review-threshold", tags=["settings"])
-async def save_review_threshold(request: Request, review_threshold: str = Form(str(REVIEW_THRESHOLD_DEFAULT))):
+async def save_review_threshold(request: Request, review_threshold: str = Form(str(REVIEW_THRESHOLD_DEFAULT), max_length=64)):
     try:
         value = _parse_review(review_threshold)
     except ValueError:
@@ -760,7 +760,7 @@ async def save_review_threshold(request: Request, review_threshold: str = Form(s
 
 
 @router.post("/settings/gone-after-runs", tags=["settings"])
-async def save_gone_after_runs(request: Request, gone_after_runs: str = Form(str(GONE_AFTER_RUNS_DEFAULT))):
+async def save_gone_after_runs(request: Request, gone_after_runs: str = Form(str(GONE_AFTER_RUNS_DEFAULT), max_length=64)):
     try:
         value = int(gone_after_runs)
     except ValueError:
@@ -774,8 +774,8 @@ async def save_gone_after_runs(request: Request, gone_after_runs: str = Form(str
 
 
 @router.post("/settings/review", tags=["settings"])
-async def save_review(request: Request, review_threshold: str = Form(""),
-                      gone_after_runs: str = Form("")):
+async def save_review(request: Request, review_threshold: str = Form("", max_length=64),
+                      gone_after_runs: str = Form("", max_length=64)):
     """Results review card: both values in one Save."""
     try:
         thr = _parse_review(review_threshold) if review_threshold.strip() else db.review_threshold()
@@ -814,7 +814,7 @@ def _verify_apify(apikey: str) -> tuple[bool, str]:
 
 
 @router.post("/settings/apikey", tags=["settings"])
-async def save_apikey(request: Request, apikey: str = Form(""), next: str = Form("")):
+async def save_apikey(request: Request, apikey: str = Form("", max_length=1024), next: str = Form("", max_length=2048)):
     """Saves the Apify token and verifies it like the setup wizard does. An
     empty field keeps the saved token. The check is informational: the token
     is saved even when it fails (Apify can be briefly unreachable)."""
@@ -842,8 +842,8 @@ async def save_apikey(request: Request, apikey: str = Form(""), next: str = Form
 
 
 @router.post("/settings/api-keys", tags=["settings"])
-async def create_api_key(request: Request, name: str = Form(""), scope: str = Form(API_KEY_SCOPE_DEFAULT),
-                         subject_id: str = Form("")):
+async def create_api_key(request: Request, name: str = Form("", max_length=200), scope: str = Form(API_KEY_SCOPE_DEFAULT, max_length=64),
+                         subject_id: str = Form("", max_length=64)):
     name = (name or "").strip() or "unnamed"
     scope = scope if scope in API_KEY_SCOPES else API_KEY_SCOPE_DEFAULT
     pinned = None
@@ -878,7 +878,7 @@ async def create_api_key(request: Request, name: str = Form(""), scope: str = Fo
 
 
 @router.post("/settings/api-keys/revoke", tags=["settings"])
-async def revoke_api_key_route(request: Request, key_id: str = Form("")):
+async def revoke_api_key_route(request: Request, key_id: str = Form("", max_length=64)):
     try:
         kid = int(key_id)
     except ValueError:
@@ -889,7 +889,7 @@ async def revoke_api_key_route(request: Request, key_id: str = Form("")):
 
 
 @router.post("/settings/apify-test", tags=["settings"])
-async def apify_test(request: Request, next: str = Form("")):
+async def apify_test(request: Request, next: str = Form("", max_length=2048)):
     try:
         res = _get_runner().client.check_account()
         ok = bool(res["ok"])
@@ -904,9 +904,9 @@ async def apify_test(request: Request, next: str = Form("")):
 
 
 @router.post("/settings/email", tags=["settings"])
-async def save_email(request: Request, host: str = Form(""), port: str = Form("465"), user: str = Form(""),
-                     password: str = Form(""), sender: str = Form(""), alert_to: str = Form(""),
-                     preset: str = Form(""), next: str = Form("")):
+async def save_email(request: Request, host: str = Form("", max_length=200), port: str = Form("465", max_length=64), user: str = Form("", max_length=200),
+                     password: str = Form("", max_length=1024), sender: str = Form("", max_length=200), alert_to: str = Form("", max_length=500),
+                     preset: str = Form("", max_length=64), next: str = Form("", max_length=2048)):
     next_url = _next(next, "notifications")
     host, user, sender, alert_to = host.strip(), user.strip(), sender.strip(), alert_to.strip()
     port = (port or "465").strip()
@@ -965,7 +965,7 @@ async def save_email(request: Request, host: str = Form(""), port: str = Form("4
 
 
 @router.post("/settings/email-test", tags=["settings"])
-async def email_test(request: Request, next: str = Form("")):
+async def email_test(request: Request, next: str = Form("", max_length=2048)):
     ok, detail = await run_in_threadpool(
         email_sender.send_email, "Test · SERP Monitor",
         "<h2>Email test</h2><p>Dashboard email delivery works.</p>")
@@ -1023,7 +1023,7 @@ async def save_ai(request: Request):
 
 
 @router.post("/settings/ai-test", tags=["settings"])
-async def ai_test(request: Request, next: str = Form("")):
+async def ai_test(request: Request, next: str = Form("", max_length=2048)):
     ok, detail = await run_in_threadpool(ai_classifier.ping)
     info = llm.provider_info()
     _audit_test(request, "settings_ai_test", ok, detail, provider=info["provider"],
@@ -1049,11 +1049,11 @@ def _http_url(value: str) -> bool:
 
 
 @router.post("/settings/notify", tags=["settings"])
-async def save_notify(request: Request, channel: str = Form("telegram"),
-                      telegram_chat_id: str | None = Form(None), telegram_token: str = Form(""),
-                      slack_webhook: str = Form(""), ntfy_url: str = Form(""),
-                      ntfy_topic: str = Form(""), ntfy_mode: str = Form(""), clear: str = Form(""),
-                      next: str = Form("")):
+async def save_notify(request: Request, channel: str = Form("telegram", max_length=64),
+                      telegram_chat_id: str | None = Form(None, max_length=200), telegram_token: str = Form("", max_length=1024),
+                      slack_webhook: str = Form("", max_length=2048), ntfy_url: str = Form("", max_length=2048),
+                      ntfy_topic: str = Form("", max_length=200), ntfy_mode: str = Form("", max_length=64), clear: str = Form("", max_length=64),
+                      next: str = Form("", max_length=2048)):
     """Saves one channel. Secrets (bot token, webhook URL, ntfy URL/topic) go
     to the env file and are kept when the field is left empty; `clear=1`
     removes them. The Telegram chat id is not a secret and lives in the
@@ -1134,7 +1134,7 @@ async def save_notify(request: Request, channel: str = Form("telegram"),
 
 
 @router.post("/settings/notify-test", tags=["settings"])
-async def notify_test(request: Request, channel: str = Form(""), next: str = Form("")):
+async def notify_test(request: Request, channel: str = Form("", max_length=64), next: str = Form("", max_length=2048)):
     next_url = _next(next, "notifications")
     if channel not in VALID_CHANNELS:
         return redirect_with_flash(next_url, "Unknown channel.", "error")
@@ -1150,8 +1150,8 @@ _ROUTE_LABELS = {"email": "email", "telegram": "Telegram", "slack": "Slack", "nt
 
 
 @router.post("/settings/alerts", tags=["settings"])
-async def save_alert_settings(request: Request, critical: str = Form(""), warning: str = Form(""),
-                              info: str = Form(""), sev: str = Form(""), neg: str = Form("")):
+async def save_alert_settings(request: Request, critical: str = Form("", max_length=64), warning: str = Form("", max_length=64),
+                              info: str = Form("", max_length=64), sev: str = Form("", max_length=64), neg: str = Form("", max_length=64)):
     """Alert routing grid + threshold in one Save. Only channels that are set
     up can be chosen (a stored choice that isn't set up may be kept)."""
     back = "/settings#routing"
@@ -1195,9 +1195,9 @@ async def save_alert_settings(request: Request, critical: str = Form(""), warnin
 
 
 @router.post("/settings/cron", tags=["settings"])
-async def save_cron(request: Request, frequency: str = Form(""), hour: str = Form("8"),
-                    name: str = Form("weekly_report"),
-                    weekday: str = Form(str(admin.DEFAULT_WEEKDAY)), next: str = Form("")):
+async def save_cron(request: Request, frequency: str = Form("", max_length=64), hour: str = Form("8", max_length=64),
+                    name: str = Form("weekly_report", max_length=200),
+                    weekday: str = Form(str(admin.DEFAULT_WEEKDAY), max_length=64), next: str = Form("", max_length=2048)):
     next_url = _next(next, "scheduling")
     if name in _LOCKED_JOBS:
         return HTMLResponse(page("Not allowed", f"<div class='card'><p>{_esc(name)} runs on a fixed "
@@ -1217,7 +1217,7 @@ async def save_cron(request: Request, frequency: str = Form(""), hour: str = For
 
 
 @router.post("/settings/cron/toggle", tags=["settings"])
-async def toggle_cron(request: Request, name: str = Form("")):
+async def toggle_cron(request: Request, name: str = Form("", max_length=200)):
     if name in _LOCKED_JOBS:
         return HTMLResponse(page("Not allowed", f"<div class='card'><p>{_esc(name)} runs on a fixed "
                                  "schedule and can't be paused.</p><p><a href='/settings#scheduling'>"

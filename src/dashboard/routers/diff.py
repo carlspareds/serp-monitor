@@ -50,7 +50,7 @@ def _runs_for_country(country_code: str) -> list[dict]:
     conn = db._connect()
     cur = conn.cursor()
     cur.execute(
-        f"SELECT apify_run_id, created_at, country_code FROM runs "
+        f"SELECT apify_run_id, created_at, country_code FROM runs "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         f"WHERE country_code = ? AND {subject_clause} ORDER BY id DESC",
         (country_code, *subject_params),
     )

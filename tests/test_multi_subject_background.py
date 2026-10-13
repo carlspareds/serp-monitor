@@ -103,7 +103,7 @@ def test_weekly_job_runs_once_per_non_demo_subject(three_subjects, tmp_path, mon
     assert subjects[1].startswith("Weekly SEO report — My project ▸ Alice Main — ")
     # The workbook is stored per subject with the Reports-modal metadata.
     from export import reports as store
-    exports = tmp_path / "data" / "exports"
+    exports = tmp_path / "exports"   # sibling of the DB, like data/evidence
     # Report files print "Project › Subject" (the PDF font has no ▸).
     for sid, label in ((1, "My project › Alice Main"), (s2, "Acme › Bob Second")):
         files = store.list_reports(exports, sid)

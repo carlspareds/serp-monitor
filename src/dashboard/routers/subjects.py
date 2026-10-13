@@ -325,7 +325,7 @@ async def ui_project_edit(project_id: int):
 # Writes
 # --------------------------------------------------------------------- #
 @router.post("/projects/add", tags=["subjects"])
-async def project_add(request: Request, name: str = Form("")):
+async def project_add(request: Request, name: str = Form("", max_length=200)):
     if viewer().restricted:
         return redirect_with_flash(_BACK, "You can't create projects.", "error")
     name = " ".join(name.split())
@@ -338,7 +338,7 @@ async def project_add(request: Request, name: str = Form("")):
 
 
 @router.post("/projects/{project_id}/rename", tags=["subjects"])
-async def project_rename(request: Request, project_id: int, name: str = Form("")):
+async def project_rename(request: Request, project_id: int, name: str = Form("", max_length=200)):
     project = db.get_client(project_id)
     if project is None or viewer().restricted:
         return redirect_with_flash(_BACK, "That project isn't available.", "error")
@@ -378,10 +378,10 @@ async def project_restore(request: Request, project_id: int):
 
 
 @router.post("/subjects/add", tags=["subjects"])
-async def subject_add(request: Request, name: str = Form(""), type: str = Form("person"),
-                      query: str = Form(""), aliases: str = Form(""),
-                      countries: list[str] = Form(default=[]), context: str = Form(""),
-                      project_id: str = Form(""), switch: str = Form(""), next: str = Form(_BACK)):
+async def subject_add(request: Request, name: str = Form("", max_length=200), type: str = Form("person", max_length=64),
+                      query: str = Form("", max_length=200), aliases: str = Form("", max_length=10000),
+                      countries: list[str] = Form(default=[]), context: str = Form("", max_length=10000),
+                      project_id: str = Form("", max_length=64), switch: str = Form("", max_length=64), next: str = Form(_BACK, max_length=2048)):
     back = safe_next(next, _BACK)
     form_again = _subject_form("/subjects/add", {"name": name, "type": type, "queries": [query],
                                                  "aliases": aliases.split(","), "countries": countries,
@@ -412,10 +412,10 @@ async def subject_add(request: Request, name: str = Form(""), type: str = Form("
 
 
 @router.post("/subjects/{subject_id}/edit", tags=["subjects"])
-async def subject_edit(request: Request, subject_id: int, name: str = Form(""),
-                       type: str = Form("person"), query: str = Form(""), aliases: str = Form(""),
-                       countries: list[str] = Form(default=[]), context: str = Form(""),
-                       project_id: str = Form(""), next: str = Form(_BACK)):
+async def subject_edit(request: Request, subject_id: int, name: str = Form("", max_length=200),
+                       type: str = Form("person", max_length=64), query: str = Form("", max_length=200), aliases: str = Form("", max_length=10000),
+                       countries: list[str] = Form(default=[]), context: str = Form("", max_length=10000),
+                       project_id: str = Form("", max_length=64), next: str = Form(_BACK, max_length=2048)):
     back = safe_next(next, _BACK)
     subject = db.get_subject(subject_id)
     if subject is None or not _can_touch_subject(subject_id):

@@ -150,11 +150,11 @@ def test_an_admin_sees_the_users_page_and_can_create_a_user(client, seeded_db, m
     assert page.status_code == 200
     assert "root" in page.text
 
-    client.post("/users/add", data={"username": "newbie", "password": "newbie-pass",
+    client.post("/users/add", data={"username": "newbie", "password": "newbie-passphrase",
                                     "role": "operator"},
                 follow_redirects=False)
 
-    assert seeded_db.authenticate_user("newbie", "newbie-pass") is not None
+    assert seeded_db.authenticate_user("newbie", "newbie-passphrase") is not None
     assert [r for r in seeded_db.list_audit(limit=20) if r["action"] == "user_add"]
 
 
@@ -177,7 +177,7 @@ def test_users_page_reachable_when_auth_is_disabled(client, seeded_db):
 def test_first_user_signs_the_creator_in(client, seeded_db):
     """With auth off, creating the first account turns sign-in on; the
     creator must not be locked out by the very next request."""
-    r = client.post("/users/add", data={"username": "first", "password": "first-pass",
+    r = client.post("/users/add", data={"username": "first", "password": "first-passphrase",
                                         "role": "admin"}, follow_redirects=False)
     assert r.status_code == 303 and "sid" in r.cookies
     client.cookies.set("sid", r.cookies["sid"])
@@ -186,7 +186,7 @@ def test_first_user_signs_the_creator_in(client, seeded_db):
 
 
 def test_first_user_must_be_an_admin(client, seeded_db):
-    r = client.post("/users/add", data={"username": "op", "password": "op-pass",
+    r = client.post("/users/add", data={"username": "op", "password": "op-passphrase-1",
                                         "role": "operator"}, follow_redirects=False)
     assert "sid" not in r.cookies
     assert seeded_db.get_user_by_username("op") is None
@@ -226,9 +226,9 @@ def test_a_viewer_is_attached_to_the_default_client(client, seeded_db, monkeypat
     monkeypatch.setenv("AUTH_PASS", "env-password")
     _as(client, seeded_db, "root", "root-password", role="admin")
 
-    client.post("/users/add", data={"username": "viewer", "password": "viewer-pass",
+    client.post("/users/add", data={"username": "viewer", "password": "viewer-passphrase",
                                     "role": "client_viewer"}, follow_redirects=False)
-    client.post("/users/add", data={"username": "op", "password": "op-pass",
+    client.post("/users/add", data={"username": "op", "password": "op-passphrase-1",
                                     "role": "operator"}, follow_redirects=False)
 
     viewer = seeded_db.get_user_by_username("viewer")
@@ -240,7 +240,7 @@ def test_a_viewer_is_attached_to_the_default_client(client, seeded_db, monkeypat
 def test_users_page_shows_viewer_label_and_no_client_column(client, seeded_db, monkeypatch):
     monkeypatch.setenv("AUTH_USER", "envadmin")
     monkeypatch.setenv("AUTH_PASS", "env-password")
-    seeded_db.add_user("viewer", "viewer-pass", role="client_viewer",
+    seeded_db.add_user("viewer", "viewer-passphrase", role="client_viewer",
                        client_id=seeded_db.list_clients()[0]["id"])
     _as(client, seeded_db, "root", "root-password", role="admin")
 
@@ -408,7 +408,7 @@ def test_changing_a_password_also_closes_that_users_sessions(client, seeded_db, 
 
     _as(client, seeded_db, "root", "root-password", role="admin")
     alice = seeded_db.get_user_by_username("alice")
-    client.post("/users/password", data={"user_id": str(alice["id"]), "password": "brand-new"},
+    client.post("/users/password", data={"user_id": str(alice["id"]), "password": "brand-new-passphrase"},
                 follow_redirects=False)
 
     from dashboard import main as dashboard_main

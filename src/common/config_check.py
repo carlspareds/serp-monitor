@@ -3,13 +3,18 @@
 One set of checks shared by the FastAPI lifespan (dashboard.main) and the
 CLI (scripts/check_config.py / `make check`).
 
-The app is deliberately usable with NO keys (demo mode: synthetic data,
-auth off on 127.0.0.1), so a missing optional key is never an error. Only
-configuration that is actually broken -- the code would silently do the
-wrong thing, or crash later -- is reported as an error:
+The app is deliberately usable with NO keys (demo mode: synthetic data;
+sign-in is always required -- the first visit creates the admin account),
+so a missing optional key is never an error. Only configuration that is
+actually broken -- the code would silently do the wrong thing, or crash
+later -- or unsafe is reported as an error:
 
-  - AUTH_USER without AUTH_PASS (or vice versa): auth stays OFF
-    (session.auth_enabled needs both), the opposite of what was intended.
+  - ALLOW_NO_AUTH=1 with a HOST that isn't a loopback address: running
+    without sign-in is only allowed for a local demo. This one is checked
+    even with SKIP_CONFIG_CHECK=1.
+  - AUTH_USER without AUTH_PASS (or vice versa): the env admin can't sign
+    in, the opposite of what was intended.
+  - APP_ENCRYPTION_KEY set but unusable.
   - DB_PATH whose directory can't be created/written.
   - SMTP_HOST/SMTP_USER/SMTP_PASS partially set: email_sender.is_configured
     needs all three, so email would be silently disabled.
@@ -71,7 +76,43 @@ ENV_VARS: dict[str, bool] = {
     "DISABLE_SCHEDULER": False,
     "HOST": False,
     "SKIP_CONFIG_CHECK": False,
+    "ALLOW_NO_AUTH": False,
+    "FORCE_HTTPS": False,
+    "TRUSTED_PROXIES": False,
+    "APP_ENCRYPTION_KEY": True,
+    "SESSION_IDLE_MINUTES": False,
+    "SESSION_MAX_HOURS": False,
+    "MAX_BODY_BYTES": False,
+    "RATE_LIMIT_ENABLED": False,
+    "BOT_MIN_SUBMIT_SECONDS": False,
 }
+
+_LOOPBACK = {"127.0.0.1", "localhost", "::1", "[::1]"}
+_TRUE = {"1", "true", "yes", "on"}
+
+
+def _is_loopback(host: str) -> bool:
+    host = (host or "").strip()
+    if host in _LOOPBACK:
+        return True
+    try:
+        import ipaddress
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def no_auth_problem(env: Mapping[str, str] | None = None) -> str | None:
+    """The one check SKIP_CONFIG_CHECK can't bypass: ALLOW_NO_AUTH on a
+    non-loopback HOST. Returns the error message, or None."""
+    env = os.environ if env is None else env
+    if (env.get("ALLOW_NO_AUTH") or "").strip().lower() not in _TRUE:
+        return None
+    host = (env.get("HOST") or "").strip()
+    if host and not _is_loopback(host):
+        return (f"ALLOW_NO_AUTH=1 with HOST={host[:60]}: running without sign-in is only "
+                "allowed on a loopback address (127.0.0.1)")
+    return None
 
 _TRUTHY_LOOKING_FALSE = {"0", "false", "no", "off"}
 
@@ -161,23 +202,78 @@ def _writable_dir_problem(directory: Path) -> str | None:
 
 # ------------------------------- checks -------------------------------- #
 def _check_auth(env, r: Report) -> None:
+    problem = no_auth_problem(env)
+    if problem:
+        r.add(ERROR, "ALLOW_NO_AUTH", problem,
+              "unset ALLOW_NO_AUTH (sign-in is required), or bind to 127.0.0.1")
+    elif (env.get("ALLOW_NO_AUTH") or "").strip().lower() in _TRUE:
+        r.add(WARN, "ALLOW_NO_AUTH", "set: no sign-in until an account exists (local demo "
+              "only; served to loopback clients only)", "unset it for any real use")
     user, pw = _get(env, "AUTH_USER"), bool(env.get("AUTH_PASS"))
     if user and pw:
-        r.add(OK, "AUTH_USER/AUTH_PASS", "env admin configured (auth ON)")
+        r.add(OK, "AUTH_USER/AUTH_PASS", "env admin configured")
+        if len(env.get("AUTH_PASS") or "") < 12:
+            r.add(WARN, "AUTH_PASS", "shorter than 12 characters",
+                  "use a long passphrase (12+ characters)")
     elif user or pw:
         have, missing = ("AUTH_USER", "AUTH_PASS") if user else ("AUTH_PASS", "AUTH_USER")
         r.add(ERROR, "AUTH_USER/AUTH_PASS",
-              f"{have} is set but {missing} is empty: auth would silently stay OFF",
+              f"{have} is set but {missing} is empty: that admin could never sign in",
               f"set {missing} too, or clear {have} to run without env credentials")
     else:
         r.add(INFO, "AUTH_USER/AUTH_PASS",
-              "unset: auth is off unless a user account exists in the database "
-              "(fine on 127.0.0.1)",
-              "set both, or create an admin in /setup or /users, before exposing it")
-        host = _get(env, "HOST")
-        if host and host not in ("127.0.0.1", "localhost", "::1"):
-            r.add(WARN, "HOST", f"HOST={host} with no AUTH_USER/AUTH_PASS: the dashboard "
-                  "may be reachable without a login", "set AUTH_USER and AUTH_PASS")
+              "unset: sign-in is required; the first visit asks you to create the admin "
+              "account (or use one already in the database)")
+
+
+def _check_https(env, r: Report) -> None:
+    host = _get(env, "HOST")
+    https = _get(env, "FORCE_HTTPS").lower() in _TRUE
+    if https:
+        r.add(OK, "FORCE_HTTPS", "set: http is redirected to https, HSTS and Secure cookies on")
+    elif host and not _is_loopback(host):
+        r.add(WARN, "FORCE_HTTPS", f"HOST={host[:60]} is not loopback but FORCE_HTTPS is not set: "
+              "passwords and session cookies would cross the network in clear text",
+              "put the app behind an HTTPS reverse proxy (README: Deploying behind HTTPS) "
+              "and set FORCE_HTTPS=1")
+
+
+def _env_file_path(env, cwd: Path) -> Path:
+    raw = _get(env, "ENV_FILE")
+    return _resolve(raw, cwd) if raw else DEFAULT_ENV_FILE
+
+
+def _check_env_permissions(env, r: Report, cwd: Path) -> None:
+    path = _env_file_path(env, cwd)
+    try:
+        if not path.is_file() or os.name != "posix":
+            return
+        mode = path.stat().st_mode & 0o777
+    except OSError:
+        return
+    if mode & 0o077:
+        r.add(WARN, "ENV_FILE" if _get(env, "ENV_FILE") else ".env",
+              f"{path.name} is readable by other users (mode {mode:o}); it holds API keys",
+              f"chmod 600 {path}")
+
+
+def _check_encryption(env, r: Report) -> None:
+    if not _get(env, "APP_ENCRYPTION_KEY"):
+        # The only secret-ish DB value today is the Telegram chat id: warn when
+        # Telegram is configured (so one is stored), otherwise just inform.
+        level = WARN if _get(env, "TELEGRAM_BOT_TOKEN") else INFO
+        r.add(level, "APP_ENCRYPTION_KEY", "unset: secret-ish settings (Telegram chat id) are "
+              "stored in the database in plain text",
+              "generate one with `python -c \"from cryptography.fernet import Fernet; "
+              "print(Fernet.generate_key().decode())\"` and keep it out of DB backups")
+        return
+    from common.crypto import check_key
+    problem = check_key(env)
+    if problem:
+        r.add(ERROR, "APP_ENCRYPTION_KEY", problem,
+              "use a Fernet key (Fernet.generate_key()) or a passphrase of 16+ characters")
+    else:
+        r.add(OK, "APP_ENCRYPTION_KEY", "set: secret-ish settings are encrypted at rest")
 
 
 def _check_db(env, r: Report, cwd: Path) -> None:
@@ -381,8 +477,11 @@ def check_config(env: Mapping[str, str] | None = None, cwd: Path | None = None) 
         r.add(WARN, "SKIP_CONFIG_CHECK", "set: configuration checks skipped")
         return r
     _check_auth(env, r)
+    _check_https(env, r)
     _check_db(env, r, cwd)
     _check_env_file(env, r, cwd)
+    _check_env_permissions(env, r, cwd)
+    _check_encryption(env, r)
     _check_apify(env, r)
     _check_ai(env, r)
     _check_smtp(env, r)
@@ -453,6 +552,12 @@ def validate_on_startup(logger: logging.Logger | None = None,
     report = check_config(env)
     if report.skipped:
         log.warning("config_check_skipped (SKIP_CONFIG_CHECK is set)")
+        # The unsafe opt-out is refused even when every other check is skipped.
+        problem = no_auth_problem(env)
+        if problem:
+            text = _scrub(f"Invalid configuration; the server will not start: {problem}", env)
+            log.error(text)
+            raise ConfigError(text)
         return report
     if report.errors:
         text = format_errors(report, env)

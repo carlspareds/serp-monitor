@@ -3,7 +3,7 @@ import os
 import sqlite3
 from datetime import UTC, datetime
 
-from auth.passwords import hash_password, verify_password
+from auth.passwords import hash_password, needs_rehash, verify_password
 from database.base import (
     _DUMMY_PASSWORD_HASH,
     USER_ROLES,
@@ -145,6 +145,12 @@ class UsersMixin:
                 return None
             cur.execute("UPDATE users SET last_login_at = ? WHERE id = ?",
                          (datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"), row["id"]))
+            if needs_rehash(stored):
+                # Upgrade-on-login: the plain password is only available right
+                # now, so this is the moment to re-hash it with today's
+                # parameters (auth.passwords._ITERATIONS).
+                cur.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                            (hash_password(password), row["id"]))
             conn.commit()
             return self._public_user(row)
         finally:

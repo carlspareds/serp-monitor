@@ -177,33 +177,33 @@ async def _remove(request: Request, domain: str, which: str, next_url: str):
 
 
 @router.post("/domains/add-any", tags=["domains"])
-async def add_any_domain(request: Request, domain: str = Form(""), list: str = Form("positive"),
-                         next: str = Form(_BACK)):
+async def add_any_domain(request: Request, domain: str = Form("", max_length=200), list: str = Form("positive", max_length=64),
+                         next: str = Form(_BACK, max_length=2048)):
     return await _add(request, domain, "negative" if list == "negative" else "positive", next)
 
 
 @router.post("/domains/add", tags=["domains"])
-async def add_domain(request: Request, domain: str = Form(""), next: str = Form(_BACK)):
+async def add_domain(request: Request, domain: str = Form("", max_length=200), next: str = Form(_BACK, max_length=2048)):
     return await _add(request, domain, "positive", next)
 
 
 @router.post("/domains/remove", tags=["domains"])
-async def remove_domain(request: Request, domain: str = Form(""), next: str = Form(_BACK)):
+async def remove_domain(request: Request, domain: str = Form("", max_length=200), next: str = Form(_BACK, max_length=2048)):
     return await _remove(request, domain, "positive", next)
 
 
 @router.post("/domains/add_neg", tags=["domains"])
-async def add_neg_domain(request: Request, domain: str = Form(""), next: str = Form(_BACK)):
+async def add_neg_domain(request: Request, domain: str = Form("", max_length=200), next: str = Form(_BACK, max_length=2048)):
     return await _add(request, domain, "negative", next)
 
 
 @router.post("/domains/remove_neg", tags=["domains"])
-async def remove_neg_domain(request: Request, domain: str = Form(""), next: str = Form(_BACK)):
+async def remove_neg_domain(request: Request, domain: str = Form("", max_length=200), next: str = Form(_BACK, max_length=2048)):
     return await _remove(request, domain, "negative", next)
 
 
 @router.post("/domains/reclassify", tags=["domains"])
-async def reclassify_results(request: Request, next: str = Form(_BACK)):
+async def reclassify_results(request: Request, next: str = Form(_BACK, max_length=2048)):
     pos = merged_positive_domains()
     neg = db.list_negative_domains()
     n = db.reclassify_all(
@@ -216,7 +216,7 @@ async def reclassify_results(request: Request, next: str = Form(_BACK)):
 
 
 @router.post("/domains/reclassify-ai", tags=["domains"])
-def reclassify_ai(request: Request, next: str = Form(_AI_BACK)):
+def reclassify_ai(request: Request, next: str = Form(_AI_BACK, max_length=2048)):
     # Plain `def`: FastAPI runs it in a worker thread, so the AI calls (up to
     # `limit` of them) don't block the server's event loop.
     if not ai_classifier.is_configured():
@@ -278,7 +278,7 @@ def reclassify_ai(request: Request, next: str = Form(_AI_BACK)):
 
 
 @router.post("/ai/annotate", tags=["domains"])
-def ai_annotate(request: Request, next: str = Form(_AI_BACK)):
+def ai_annotate(request: Request, next: str = Form(_AI_BACK, max_length=2048)):
     """Run AI checks: re-runs same-name + severity on the active subject's
     latest stored results that don't have them yet (processing/ai_checks.py),
     capped per click. Operator or admin."""

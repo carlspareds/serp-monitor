@@ -111,12 +111,12 @@ Two one-off repair scripts fix data written before this (back up first;
 both are idempotent and print what they change):
 
     # 1. merge url_hash keys of pages that differ only by tracking params
-    .venv/bin/python scripts/repair_url_identity.py [--db PATH]          # dry run
-    .venv/bin/python scripts/repair_url_identity.py --apply [--db PATH]
+    .venv/bin/python scripts/maintenance/repair_url_identity.py [--db PATH]          # dry run
+    .venv/bin/python scripts/maintenance/repair_url_identity.py --apply [--db PATH]
 
     # 2. re-apply human verdicts to every row of the same page, per subject
-    .venv/bin/python scripts/repair_human_verdicts.py --dry-run [--db PATH] [--subject ID]
-    .venv/bin/python scripts/repair_human_verdicts.py [--db PATH] [--subject ID]
+    .venv/bin/python scripts/maintenance/repair_human_verdicts.py --dry-run [--db PATH] [--subject ID]
+    .venv/bin/python scripts/maintenance/repair_human_verdicts.py [--db PATH] [--subject ID]
 
 `repair_url_identity.py` merges `url_lifecycle` rows of one page (earliest
 first seen, latest last seen, best position) and recomputes `evidence.url_hash`;
@@ -124,6 +124,13 @@ notes on several spellings of one page are only listed, and old AI-cache
 entries are left (they are simply never hit again). Each real run writes a
 backup next to the database first (`<db>.pre-url-identity-*.bak`,
 `<db>.pre-verdicts-*.bak`).
+
+## Backups and data at rest
+
+Everything above lives in one SQLite file plus `data/evidence/` and
+`data/exports/`. A backup from Settings → Backup holds every subject's
+results, notes and evidence hashes: store it encrypted and away from
+`APP_ENCRYPTION_KEY`. See [`SECURITY.md`](SECURITY.md), item 5.
 
 ## Tests
 

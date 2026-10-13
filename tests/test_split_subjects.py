@@ -1,4 +1,4 @@
-"""scripts/split_subjects.py: splits a subject 1 that accumulated searches for
+"""scripts/maintenance/split_subjects.py: splits a subject 1 that accumulated searches for
 other people into one Subject per tracked name. Fixture mirrors the real demo
 DB: 4 "Jordan Ashworth" runs (the demo seed) + 1 "Alex Rivera" run in the
 same country, all on subject 1."""
@@ -14,7 +14,10 @@ from database.models import Database, url_hash
 
 
 def _load(name):
-    spec = importlib.util.spec_from_file_location(name, _ROOT / "scripts" / f"{name}.py")
+    path = _ROOT / "scripts" / f"{name}.py"
+    if not path.exists():
+        path = _ROOT / "scripts" / "maintenance" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

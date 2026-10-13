@@ -206,8 +206,8 @@ async def ui_reports(tab: str = "new", kind: str = "pdf", subject_id: str = "", 
 
 
 @router.post("/reports/create", response_class=HTMLResponse, tags=["export"])
-def reports_create(request: Request, kind: str = Form("pdf"), subject_id: str = Form(""),
-                   country: str = Form(""), period: str = Form(store.DEFAULT_PERIOD)):
+def reports_create(request: Request, kind: str = Form("pdf", max_length=64), subject_id: str = Form("", max_length=64),
+                   country: str = Form("", max_length=64), period: str = Form(store.DEFAULT_PERIOD, max_length=64)):
     if kind not in store.KINDS:
         kind = "pdf"
     subject = _subject_for(subject_id)

@@ -2513,6 +2513,22 @@ details[open] {
   color: var(--accent-text);
 }
 
+.lg-hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin: -6px 0 14px;
+}
+
+/* Honeypot field of the anonymous forms (dashboard.security): invisible to
+   people and screen readers, filled in by naive bots. */
+.hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 /* ==========================================================================
    13. PUBLIC GETTING STARTED GUIDE (/onboarding)
    ========================================================================== */

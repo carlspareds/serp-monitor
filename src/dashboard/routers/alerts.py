@@ -155,7 +155,7 @@ async def alerts_page():
 
 
 @router.post("/alerts/check", tags=["alerts"])
-async def alerts_check(request: Request, next: str = Form("")):
+async def alerts_check(request: Request, next: str = Form("", max_length=2048)):
     # The same function the daily `alerts_check` job runs (scheduler/jobs.py),
     # so "Check now" and the schedule always run the same checks.
     result = weekly.run_alert_checks(db)
@@ -172,8 +172,8 @@ async def alerts_check(request: Request, next: str = Form("")):
 
 
 @router.post("/alerts/routing", tags=["alerts"])
-async def alerts_routing(request: Request, critical: str = Form(""), warning: str = Form(""),
-                         info: str = Form("")):
+async def alerts_routing(request: Request, critical: str = Form("", max_length=64), warning: str = Form("", max_length=64),
+                         info: str = Form("", max_length=64)):
     routing = (("critical", critical), ("warning", warning), ("info", info))
     bad = [ch for _s, ch in routing if ch not in ROUTING_CHANNELS]
     if bad:
@@ -188,13 +188,13 @@ async def alerts_routing(request: Request, critical: str = Form(""), warning: st
 
 
 @router.post("/alerts/seen", tags=["alerts"])
-async def alerts_seen(request: Request, next: str = Form("")):
+async def alerts_seen(request: Request, next: str = Form("", max_length=2048)):
     db.mark_alerts_seen()
     return _done(request, "All alerts marked as read.", next)
 
 
 @router.post("/alerts/thresholds", tags=["alerts"])
-async def alerts_thresholds(request: Request, sev: str = Form(""), neg: str = Form("")):
+async def alerts_thresholds(request: Request, sev: str = Form("", max_length=64), neg: str = Form("", max_length=64)):
     try:
         sev_n = int(sev) if sev.strip() else alerts_engine.SEVERITY_THRESHOLD_DEFAULT
         neg_n = int(neg) if neg.strip() else 1
@@ -219,8 +219,8 @@ def _alert_id(raw: str) -> int | None:
 
 
 @router.post("/alerts/ack", tags=["alerts"])
-async def alerts_ack(request: Request, alert_id: str = Form(""), assignee: str = Form(""),
-                     next: str = Form("")):
+async def alerts_ack(request: Request, alert_id: str = Form("", max_length=64), assignee: str = Form("", max_length=200),
+                     next: str = Form("", max_length=2048)):
     aid = _alert_id(alert_id)
     if aid is None or db.get_alert(aid) is None:
         return _done(request, "That alert no longer exists.", next, "error")
@@ -231,8 +231,8 @@ async def alerts_ack(request: Request, alert_id: str = Form(""), assignee: str =
 
 
 @router.post("/alerts/snooze", tags=["alerts"])
-async def alerts_snooze(request: Request, alert_id: str = Form(""), until: str = Form("7d"),
-                        next: str = Form("")):
+async def alerts_snooze(request: Request, alert_id: str = Form("", max_length=64), until: str = Form("7d", max_length=64),
+                        next: str = Form("", max_length=2048)):
     aid = _alert_id(alert_id)
     if aid is None or db.get_alert(aid) is None:
         return _done(request, "That alert no longer exists.", next, "error")
@@ -246,7 +246,7 @@ async def alerts_snooze(request: Request, alert_id: str = Form(""), until: str =
 
 
 @router.post("/alerts/resolve", tags=["alerts"])
-async def alerts_resolve(request: Request, alert_id: str = Form(""), next: str = Form("")):
+async def alerts_resolve(request: Request, alert_id: str = Form("", max_length=64), next: str = Form("", max_length=2048)):
     aid = _alert_id(alert_id)
     if aid is None or db.get_alert(aid) is None:
         return _done(request, "That alert no longer exists.", next, "error")

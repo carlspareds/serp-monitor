@@ -228,8 +228,8 @@ def _done(message: str, kind: str = "ok"):
 
 
 @router.post("/timeline/add", response_class=HTMLResponse)
-async def timeline_add(request: Request, event_date: str = Form(""), description: str = Form(""),
-                       expected_effect: str = Form(default="")):
+async def timeline_add(request: Request, event_date: str = Form("", max_length=64), description: str = Form("", max_length=10000),
+                       expected_effect: str = Form(default="", max_length=10000)):
     # Review 4.5 #1: the date is validated BEFORE writing (a garbage date used
     # to degrade the impact/PDF).
     values = {"event_date": event_date, "description": description, "expected_effect": expected_effect}
@@ -251,7 +251,7 @@ async def timeline_add(request: Request, event_date: str = Form(""), description
 
 
 @router.post("/timeline/delete", response_class=HTMLResponse)
-async def timeline_delete(request: Request, event_id: str = Form("")):
+async def timeline_delete(request: Request, event_id: str = Form("", max_length=64)):
     try:
         eid = int(event_id)
     except ValueError:

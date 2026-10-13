@@ -122,7 +122,7 @@ def _new_negatives(db, since: str, countries: list[str]) -> list[dict]:
     conn = db._connect()
     try:
         rows = conn.execute(
-            "SELECT url, country, first_seen FROM url_lifecycle WHERE classification = 'negative' "
+            "SELECT url, country, first_seen FROM url_lifecycle WHERE classification = 'negative' "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
             f"AND (same_person IS NULL OR same_person != 'no') AND first_seen >= ? AND {clause} "
             "ORDER BY first_seen DESC",
             (since, *params),

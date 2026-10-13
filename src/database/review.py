@@ -55,7 +55,7 @@ class ReviewMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause("s")
         cur.execute(
-            f"SELECT s.* FROM search_results s WHERE {self._REVIEW_QUEUE_WHERE} "
+            f"SELECT s.* FROM search_results s WHERE {self._REVIEW_QUEUE_WHERE} "  # noqa: S608 -- constant fragment; subject_clause is the constant 'subject_id = ?' (values bound)
             f"AND {subject_clause} ORDER BY s.id DESC LIMIT ?",
             (*subject_params, limit),
         )
@@ -70,7 +70,7 @@ class ReviewMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause("s")
         cur.execute(
-            f"SELECT COUNT(*) FROM search_results s WHERE {self._REVIEW_QUEUE_WHERE} "
+            f"SELECT COUNT(*) FROM search_results s WHERE {self._REVIEW_QUEUE_WHERE} "  # noqa: S608 -- constant fragment; subject_clause is the constant 'subject_id = ?' (values bound)
             f"AND {subject_clause}",
             subject_params,
         )
@@ -102,7 +102,7 @@ class ReviewMixin:
         conn = self._connect()
         cur = conn.cursor()
         row = cur.execute(
-            f"SELECT * FROM search_results WHERE id = ? AND {subject_clause}",
+            f"SELECT * FROM search_results WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (result_id, *subject_params),
         ).fetchone()
         if row is None:
@@ -111,7 +111,7 @@ class ReviewMixin:
         previous = row["classification"]
         review_status = "approved" if classification == previous else "corrected"
         cur.execute(
-            f"UPDATE search_results SET classification=?, classified_by='human', "
+            f"UPDATE search_results SET classification=?, classified_by='human', "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"confidence=1.0, review_status=?, human_at=? WHERE id=? AND {subject_clause}",
             (classification, review_status, _now(), result_id, *subject_params),
         )
@@ -163,7 +163,7 @@ class ReviewMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         row = cur.execute(
-            f"SELECT url FROM search_results WHERE id = ? AND {subject_clause}",
+            f"SELECT url FROM search_results WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (result_id, *subject_params),
         ).fetchone()
         if row is None:
@@ -172,7 +172,7 @@ class ReviewMixin:
         target_hash = url_hash(row["url"] or "")
         ids = [
             r["id"] for r in cur.execute(
-                f"SELECT id, url FROM search_results WHERE {subject_clause}", subject_params
+                f"SELECT id, url FROM search_results WHERE {subject_clause}", subject_params  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             ).fetchall()
             if url_hash(r["url"] or "") == target_hash
         ]
@@ -199,7 +199,7 @@ class ReviewMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            "SELECT * FROM search_results WHERE run_id = ? AND classification = 'negative' "
+            "SELECT * FROM search_results WHERE run_id = ? AND classification = 'negative' "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"AND (same_person IS NULL OR same_person != 'no') AND severity IS NULL AND {subject_clause}",
             (run_id, *subject_params),
         )
@@ -219,7 +219,7 @@ class ReviewMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         row = cur.execute(
-            "SELECT * FROM search_results WHERE id = ? AND classification = 'negative' "
+            "SELECT * FROM search_results WHERE id = ? AND classification = 'negative' "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"AND (same_person IS NULL OR same_person != 'no') AND severity IS NULL AND {subject_clause}",
             (result_id, *subject_params),
         ).fetchone()
@@ -237,7 +237,7 @@ class ReviewMixin:
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE search_results SET severity=?, topic=? WHERE id=? AND {subject_clause}",
+            f"UPDATE search_results SET severity=?, topic=? WHERE id=? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (severity, topic, result_id, *subject_params),
         )
         conn.commit()
@@ -252,7 +252,7 @@ class ReviewMixin:
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT run_id, MAX(id) FROM search_results "
+                "SELECT run_id, MAX(id) FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"WHERE {subject_clause} GROUP BY country_code, engine, device",
                 subject_params,
             ).fetchall()
@@ -269,7 +269,7 @@ class ReviewMixin:
         conn = self._connect()
         try:
             rows = conn.execute(
-                f"SELECT * FROM search_results WHERE run_id IN ({marks}) AND {subject_clause} "
+                f"SELECT * FROM search_results WHERE run_id IN ({marks}) AND {subject_clause} "  # noqa: S608 -- only '?' placeholders are interpolated; subject_clause is the constant 'subject_id = ?' (values bound)
                 "ORDER BY position IS NULL, position, id",
                 (*run_ids, *subject_params),
             ).fetchall()
@@ -289,7 +289,7 @@ class ReviewMixin:
         conn = self._connect()
         try:
             cur = conn.execute(
-                "UPDATE search_results SET same_person = ?, review_status = CASE "
+                "UPDATE search_results SET same_person = ?, review_status = CASE "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 "WHEN ? = 'unsure' AND (review_status IS NULL OR review_status = 'none') "
                 "THEN 'pending' ELSE review_status END "
                 "WHERE id = ? AND same_person IS NULL "
@@ -329,7 +329,7 @@ class ReviewMixin:
         CHANGED (the human verdict may come from any run)."""
         self._fill_url_keys(cur)
         subject_clause, subject_params = self._subject_clause()
-        sql = ("SELECT id, run_id, url, url_key, classification, classified_by, same_person, "
+        sql = ("SELECT id, run_id, url, url_key, classification, classified_by, same_person, "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                f"human_at, review_status, subject_id FROM search_results WHERE {subject_clause}")
         params: list = list(subject_params)
         if key is not None:
@@ -337,7 +337,7 @@ class ReviewMixin:
             params.append(key)
         else:
             # Only pages that have a human row somewhere.
-            sql += (" AND url_key IN (SELECT url_key FROM search_results "
+            sql += (" AND url_key IN (SELECT url_key FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     f"WHERE classified_by = 'human' AND {subject_clause})")
             params.extend(subject_params)
         groups: dict[tuple, list] = {}
@@ -389,7 +389,7 @@ class ReviewMixin:
         already matching are left alone. Returns the changes (id, run_id,
         url, from, to, ...); `dry_run` computes them without writing.
         Called before every AI write (Run AI checks, Relabel) and by
-        scripts/repair_human_verdicts.py."""
+        scripts/maintenance/repair_human_verdicts.py."""
         conn = self._connect()
         try:
             changes = self._reapply_human_verdicts(conn.cursor(), run_ids=run_ids, dry_run=dry_run)
@@ -406,7 +406,7 @@ class ReviewMixin:
         conn = self._connect()
         try:
             rows = conn.execute(
-                "SELECT id, url_key, classification, classified_by, same_person, human_at "
+                "SELECT id, url_key, classification, classified_by, same_person, human_at "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"FROM search_results WHERE {subject_clause} AND url_key IN (SELECT url_key "
                 f"FROM search_results WHERE classified_by = 'human' AND {subject_clause})",
                 (*subject_params, *subject_params)).fetchall()

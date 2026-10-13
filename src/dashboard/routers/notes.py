@@ -15,6 +15,7 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from common.validate import http_url
 from dashboard import ui
 from dashboard.context import is_fragment_request, redirect_with_flash, viewer
 from dashboard.deps import db
@@ -57,7 +58,7 @@ def _result_for(url: str) -> dict:
     clause, params = db._subject_clause()
     conn = db._connect()
     try:
-        row = conn.execute(f"SELECT title, domain FROM search_results WHERE url = ? AND {clause} "
+        row = conn.execute(f"SELECT title, domain FROM search_results WHERE url = ? AND {clause} "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
                            "ORDER BY id DESC LIMIT 1", (url, *params)).fetchone()
     finally:
         conn.close()
@@ -194,14 +195,19 @@ def _answer(url: str, message: str, kind: str = "ok", status: int = 200, error: 
 
 
 @router.post("/notes/save", response_class=HTMLResponse)
-async def notes_save(request: Request, url: str = Form(...), note: str = Form(""),
-                     assignee: str = Form(""), due_date: str = Form(""), status: str = Form(""),
-                     comment: str = Form("")):
+async def notes_save(request: Request, url: str = Form(..., max_length=2048), note: str = Form("", max_length=10000),
+                     assignee: str = Form("", max_length=200), due_date: str = Form("", max_length=64), status: str = Form("", max_length=64),
+                     comment: str = Form("", max_length=10000)):
     url = url.strip()
     note = note.strip()
     assignee = assignee.strip()
     due_date = due_date.strip()
     values = {"note": note, "assignee": assignee, "due_date": due_date, "status": status}
+    if http_url(url) is None:
+        # Notes belong to result pages: only an absolute http(s) URL (never
+        # javascript:/data: or a relative path that would render as a link).
+        return _answer("", "Not saved: that isn't a web page address.", "error", 400,
+                       "Not saved: that isn't a web page address.", values)
     if due_date:
         try:
             date.fromisoformat(due_date)
@@ -229,8 +235,8 @@ async def notes_save(request: Request, url: str = Form(...), note: str = Form(""
 
 
 @router.post("/notes/status", response_class=HTMLResponse)
-async def notes_status(request: Request, note_id: str = Form(""), to_status: str = Form(""),
-                       comment: str = Form("")):
+async def notes_status(request: Request, note_id: str = Form("", max_length=64), to_status: str = Form("", max_length=64),
+                       comment: str = Form("", max_length=10000)):
     # Defensive note_id (H5): a non-numeric value is ignored without writing.
     try:
         note_id_n = int((note_id or "").strip())

@@ -3,7 +3,7 @@ Manual smoke check of the FULL flow against Apify (makes a real, paid call)
 ================================
 Run from the project root (needs APIFY_API_KEY in .env):
 
-    .venv/bin/python scripts/smoke_apify.py
+    .venv/bin/python scripts/maintenance/smoke_apify.py
 
 Launches a real search, classifies, saves to the same SQLite DB the app uses
 (DB_PATH from .env/environment, else data/seo_dashboard.db) and prints a
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 # Allow imports from the root and from src/
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 

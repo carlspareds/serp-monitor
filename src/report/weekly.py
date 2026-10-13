@@ -181,7 +181,8 @@ def run(db=None, query=None, countries=None, pages: int = 1, runner=None) -> dic
     # Kept in the subject's report store, so it shows under Reports →
     # Previous reports (export.reports).
     from export import reports as report_store
-    exports = project_root / "data" / "exports"
+    # Sibling of the database, like data/evidence (tests: their tmp dir).
+    exports = Path(db.db_path).resolve().parent / "exports"
     report_store.adopt_legacy_files(exports)
     sid = db._effective_subject_id()
     out = report_store.subject_dir(exports, sid) / f"weekly_{date_tag}.xlsx"

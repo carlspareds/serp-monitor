@@ -1,8 +1,8 @@
 """Merges URL identities that are the same page once tracking parameters (and
 known locale path prefixes) are ignored.
 
-    .venv/bin/python scripts/repair_url_identity.py [--db PATH]          # dry run (default)
-    .venv/bin/python scripts/repair_url_identity.py --apply [--db PATH]
+    .venv/bin/python scripts/maintenance/repair_url_identity.py [--db PATH]          # dry run (default)
+    .venv/bin/python scripts/maintenance/repair_url_identity.py --apply [--db PATH]
 
 normalize_url (database.base) now drops tracking parameters -- srsltid (added by
 Google with a fresh random value on many results, every search), utm_*, gclid,
@@ -28,7 +28,7 @@ bumps URL_KEY_VERSION. What this script does, per subject:
      ai_verdict_cache (entries under old keys are simply never hit again).
 
 Human verdicts across the merged rows are NOT changed here: run
-scripts/repair_human_verdicts.py afterwards.
+scripts/maintenance/repair_human_verdicts.py afterwards.
 
 Safety: without --apply nothing is written -- the plan is computed on a
 temporary copy (the app's startup migrations run there, never on your file).
@@ -45,7 +45,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT), str(_ROOT / "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -142,7 +142,7 @@ def apply_plan(conn: sqlite3.Connection, plan: dict) -> None:
                             (old["url_hash"], old["country"], old["engine"] or "google",
                              old["subject_id"]))
             cols = list(p["new"].keys())
-            cur.execute(f"INSERT INTO url_lifecycle ({', '.join(cols)}) "
+            cur.execute(f"INSERT INTO url_lifecycle ({', '.join(cols)}) "  # noqa: S608 -- columns are fixed keys built in code; only '?' placeholders are interpolated
                         f"VALUES ({', '.join('?' for _ in cols)})", [p["new"][c] for c in cols])
         cur.executemany("UPDATE evidence SET url_hash = ? WHERE id = ?", plan["evidence"])
         cur.execute("COMMIT")

@@ -572,6 +572,10 @@
     activateRow(t);
 
     if (t.closest('[data-theme-toggle]')) { window.toggleTheme(); closePopover(false); return; }
+    // Error pages' "Go back" (no javascript: URLs under the CSP).
+    if (t.closest('[data-history-back]') && window.history.length > 1) {
+      e.preventDefault(); window.history.back(); return;
+    }
 
     // Assistant: the top-bar button toggles it (it is not an SM panel), a
     // row menu's "Ask the assistant about this" opens it with a question.

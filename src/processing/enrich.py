@@ -41,7 +41,7 @@ def _known_same_person(db) -> dict[str, str]:
     # A11.
     subject_clause, subject_params = db._subject_clause()
     rows = cur.execute(
-        f"SELECT url, same_person FROM search_results WHERE same_person IS NOT NULL "
+        f"SELECT url, same_person FROM search_results WHERE same_person IS NOT NULL "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         f"AND {subject_clause} ORDER BY (classified_by = 'human'), "
         "(classified_by = 'human' AND same_person = 'no'), COALESCE(human_at, ''), id",
         subject_params,

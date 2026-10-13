@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+  <script src="/static/theme-boot.js"></script>
 </head>
 <body class="landing-body">
 
@@ -18,7 +18,7 @@
     <nav class="landing-links">
       <a href="/setup">Setup wizard</a>
       <a href="/" class="btn-link btn-sm">{{ page_icon('chart', 15) }} Open Dashboard</a>
-      <button type="button" class="btn-sm btn-ghost" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">{{ page_icon('theme', 16) }}</button>
+      <button type="button" class="btn-sm btn-ghost" data-theme-toggle title="Toggle theme" aria-label="Toggle theme">{{ page_icon('theme', 16) }}</button>
     </nav>
   </header>
 

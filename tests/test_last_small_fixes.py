@@ -161,7 +161,7 @@ def test_weekly_job_workbook_uses_the_same_label(tmp_path, monkeypatch):
     monkeypatch.setattr(weekly, "ApifyRunner", lambda: _FakeRunner())
     monkeypatch.setattr(weekly.email_sender, "is_configured", lambda: False)
     weekly.run(db=db.for_subject(1), query="Jordan Ashworth", countries=["us"])
-    base = tmp_path / "data" / "exports"
+    base = tmp_path / "exports"   # sibling of the DB
     book = next((base / "1").glob("weekly_*.xlsx"))
     assert openpyxl.load_workbook(book)["SUM"]["A1"].value == f"SERP MONITOR  ·  {LABEL}"
     assert _sidecar(base, book.name)["subject"] == LABEL
@@ -327,7 +327,7 @@ def test_url_key_version_bump_recomputes_keys(tmp_path):
 
 
 def test_repair_script_mentions_locale_prefixes():
-    text = (_ROOT / "scripts" / "repair_url_identity.py").read_text()
+    text = (_ROOT / "scripts" / "maintenance" / "repair_url_identity.py").read_text()
     assert "locale" in text and "URL_KEY_VERSION" in text
 
 

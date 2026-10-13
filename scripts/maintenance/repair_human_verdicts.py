@@ -1,7 +1,7 @@
 """Re-applies every human verdict to all the rows of the same PAGE, per subject.
 
-    .venv/bin/python scripts/repair_human_verdicts.py --dry-run [--db PATH] [--subject ID]
-    .venv/bin/python scripts/repair_human_verdicts.py [--db PATH] [--subject ID]
+    .venv/bin/python scripts/maintenance/repair_human_verdicts.py --dry-run [--db PATH] [--subject ID]
+    .venv/bin/python scripts/maintenance/repair_human_verdicts.py [--db PATH] [--subject ID]
 
 Human verdicts always win, per page: a page (same normalized URL -- tracking
 parameters such as srsltid/utm_* and fragments don't count, see
@@ -15,7 +15,7 @@ verdict on every row of the subject (all runs, countries, engines):
 
 The app does this by itself for new verdicts and before every AI write; this
 script repairs rows written before that (e.g. srsltid variants of one page
-that kept their old AI label). Run scripts/repair_url_identity.py first if
+that kept their old AI label). Run scripts/maintenance/repair_url_identity.py first if
 you haven't (it doesn't need to be re-run).
 
 Safety: --dry-run computes the changes on a temporary copy (the app's startup
@@ -32,7 +32,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT), str(_ROOT / "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)

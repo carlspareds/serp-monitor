@@ -10,7 +10,7 @@ from conftest import _wait_for_job
 from assistant import harness, pending, router
 from assistant.fakes import ScriptedModel, call, say
 
-SECRET = "sk-test-API-SECRET-987654321"
+SECRET = "sk-test-API-SECRET-987654321"  # gitleaks:allow (fake test value)
 
 
 @pytest.fixture(autouse=True)
@@ -113,7 +113,7 @@ def test_csrf_cross_site_post_rejected(client, ai_on, monkeypatch):
 
 
 def test_no_secret_in_any_response(client, ai_on, monkeypatch):
-    monkeypatch.setenv("APIFY_API_KEY", "apify_api_HIDDEN_555666")
+    monkeypatch.setenv("APIFY_API_KEY", "apify_api_HIDDEN_555666")  # gitleaks:allow (fake test value)
     script(monkeypatch, call("get_setup_status"), say(f"key={SECRET}"))
     texts = [chat(client, "show me my keys").text, client.get("/assistant/status").text,
              client.get("/assistant/panel").text, client.get("/assistant/suggestions").text]

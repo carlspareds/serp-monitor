@@ -95,16 +95,33 @@ def set_env(env_path: str, key: str, value: str) -> None:
             break
     if not found:
         lines.append(f"{key}={value}")
-    path.write_text("\n".join(lines) + "\n")
-    # .env holds API keys/passwords in plaintext -- owner read/write only.
-    # Applied on every write (not just creation) since some platforms
-    # reset permissions on file replace, and a stricter-than-default mode
-    # here is cheap insurance regardless of the platform's own umask.
+    write_private(path, "\n".join(lines) + "\n")
+    os.environ[key] = value
+
+
+def write_private(path: Path, text: str) -> None:
+    """Write `text` to `path` readable by the owner only (0600), atomically:
+    the content goes to a temp file CREATED with mode 0600 (never a moment
+    with the umask's 0644) in the same directory, then replaces `path`.
+    .env holds API keys and passwords in plain text."""
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(tmp, 0o600)   # in case the file pre-existed with a wider mode
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     try:
         os.chmod(path, 0o600)
     except OSError:
-        pass  # e.g. read-only filesystem or unsupported platform -- best-effort
-    os.environ[key] = value
+        pass  # e.g. a filesystem without POSIX modes -- best-effort
 
 
 def mask(value: str, keep: int = 4) -> str:

@@ -226,7 +226,7 @@ class ApifyRunner:
         (info: apify_status, apify_elapsed_s -- the same polls `on_status`
         receives, but tagged with the engine), "skipped" or "error" (info:
         message). `on_status(status, elapsed)` keeps its legacy 2-arg shape
-        (scripts/smoke_apify.py). Callback failures never break the search.
+        (scripts/maintenance/smoke_apify.py). Callback failures never break the search.
         """
         self._check_budget(override_budget)
 

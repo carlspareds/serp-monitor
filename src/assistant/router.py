@@ -106,7 +106,7 @@ def session_key(request: Request) -> tuple[str, str | None]:
     """(key, new_cookie_value). Logged in: derived from the session cookie.
     Auth disabled: a per-browser assistant cookie, created on first use."""
     if session_mod.session_user(request):
-        sid = request.cookies.get("sid") or ""
+        sid = session_mod.session_token(request)
         return "sid:" + hashlib.sha256(sid.encode()).hexdigest()[:24], None
     token = request.cookies.get(_COOKIE) or ""
     if len(token) >= 16:
@@ -123,7 +123,7 @@ def build_context(request: Request, subject_id: int | None = None) -> tools.Tool
         user=request_user(request), jobs=getattr(main, "jobs", None),
         runner_factory=lambda: sys.modules["dashboard.main"].get_runner(),
         exports_dir=deps.exports_dir,
-        extra={"session": job_status.session_hash(request.cookies.get("sid")
+        extra={"session": job_status.session_hash(session_mod.session_token(request)
                                                   or request.cookies.get(_COOKIE))},
     )
 

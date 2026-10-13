@@ -162,7 +162,7 @@ class RunsMixin:
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE runs SET cost_usd = COALESCE(cost_usd, 0) + COALESCE(?, 0), "
+            f"UPDATE runs SET cost_usd = COALESCE(cost_usd, 0) + COALESCE(?, 0), "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"compute_units = COALESCE(compute_units, 0) + COALESCE(?, 0) "
             f"WHERE apify_run_id = ? AND {subject_clause}",
             (cost_usd, compute_units, apify_run_id, *subject_params),
@@ -248,7 +248,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"UPDATE runs SET ai_note = ? WHERE apify_run_id = ? AND {subject_clause}",
+            f"UPDATE runs SET ai_note = ? WHERE apify_run_id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (note or None, apify_run_id, *subject_params),
         )
         conn.commit()
@@ -265,11 +265,11 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"DELETE FROM search_results WHERE run_id = ? AND {subject_clause}",
+            f"DELETE FROM search_results WHERE run_id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (apify_run_id, *subject_params),
         )
         cur.execute(
-            f"DELETE FROM runs WHERE apify_run_id = ? AND {subject_clause}",
+            f"DELETE FROM runs WHERE apify_run_id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (apify_run_id, *subject_params),
         )
         conn.commit()
@@ -280,7 +280,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            "SELECT DISTINCT country_code FROM search_results "
+            "SELECT DISTINCT country_code FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"WHERE country_code IS NOT NULL AND country_code <> '' AND {subject_clause} "
             "ORDER BY country_code",
             subject_params,
@@ -297,7 +297,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            "SELECT DISTINCT engine FROM search_results "
+            "SELECT DISTINCT engine FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"WHERE engine IS NOT NULL AND engine <> '' AND {subject_clause} ORDER BY engine",
             subject_params,
         )
@@ -313,7 +313,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            "SELECT DISTINCT device FROM search_results "
+            "SELECT DISTINCT device FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"WHERE device IS NOT NULL AND device <> '' AND {subject_clause} ORDER BY device",
             subject_params,
         )
@@ -337,27 +337,27 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT COUNT(*) FROM runs WHERE engine = ? AND {subject_clause}",
+            f"SELECT COUNT(*) FROM runs WHERE engine = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (engine, *subject_params),
         )
         total_runs = cur.fetchone()[0]
         where = f"WHERE (same_person IS NULL OR same_person != 'no') AND engine = ? AND {subject_clause}"
-        cur.execute(f"SELECT COUNT(*) FROM search_results {where}", (engine, *subject_params))
+        cur.execute(f"SELECT COUNT(*) FROM search_results {where}", (engine, *subject_params))  # noqa: S608 -- where is built from constant fragments; values bound
         total_results = cur.fetchone()[0]
         cur.execute(
-            f"SELECT classification, COUNT(*) FROM search_results {where} GROUP BY classification",
+            f"SELECT classification, COUNT(*) FROM search_results {where} GROUP BY classification",  # noqa: S608 -- where is built from constant fragments; values bound
             (engine, *subject_params),
         )
         by_class = {"positive": 0, "negative": 0, "neutral": 0}
         for cls, n in cur.fetchall():
             by_class[cls or "neutral"] = n
         cur.execute(
-            f"SELECT MAX(created_at) FROM runs WHERE engine = ? AND {subject_clause}",
+            f"SELECT MAX(created_at) FROM runs WHERE engine = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (engine, *subject_params),
         )
         last_run = cur.fetchone()[0]
         cur.execute(
-            f"SELECT COUNT(DISTINCT country_code) FROM runs WHERE engine = ? AND {subject_clause}",
+            f"SELECT COUNT(DISTINCT country_code) FROM runs WHERE engine = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (engine, *subject_params),
         )
         countries = cur.fetchone()[0]
@@ -375,7 +375,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT * FROM search_results WHERE run_id = ? AND {subject_clause} "
+            f"SELECT * FROM search_results WHERE run_id = ? AND {subject_clause} "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             "ORDER BY country_code, position",
             (apify_run_id, *subject_params),
         )
@@ -436,7 +436,7 @@ class RunsMixin:
             return result
         placeholders = ",".join("?" * len(apify_run_ids))
         cur.execute(
-            f"SELECT run_id, classification, COUNT(*) FROM search_results "
+            f"SELECT run_id, classification, COUNT(*) FROM search_results "  # noqa: S608 -- only '?' placeholders are interpolated
             f"WHERE run_id IN ({placeholders}) "
             f"AND (same_person IS NULL OR same_person != 'no') "
             f"GROUP BY run_id, classification",
@@ -455,7 +455,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT * FROM runs WHERE {subject_clause} ORDER BY id DESC LIMIT ?",
+            f"SELECT * FROM runs WHERE {subject_clause} ORDER BY id DESC LIMIT ?",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (*subject_params, limit),
         )
         rows = [dict(r) for r in cur.fetchall()]
@@ -470,7 +470,7 @@ class RunsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            f"SELECT * FROM runs WHERE apify_run_id = ? AND {subject_clause}",
+            f"SELECT * FROM runs WHERE apify_run_id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (apify_run_id, *subject_params),
         )
         row = cur.fetchone()
@@ -508,7 +508,7 @@ class RunsMixin:
             ON r.country_code = latest.country_code AND r.id = latest.max_id
             WHERE {subject_clause}
             ORDER BY r.country_code
-            """,
+            """,  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (*subject_params_inner, *subject_params),
         )
         rows = [dict(r) for r in cur.fetchall()]

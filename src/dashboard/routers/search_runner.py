@@ -35,7 +35,7 @@ from dashboard import ui
 from dashboard.context import allowed_subjects, is_fragment_request, viewer
 from dashboard.deps import db
 from dashboard.jobs import _MAX_CONCURRENT_JOBS, step_key
-from dashboard.session import audit, is_demo_mode
+from dashboard.session import audit, is_demo_mode, session_token
 from dashboard.ui_helpers import (
     COUNTRIES,
     _clamp_pages,
@@ -87,7 +87,7 @@ def viewer_key() -> str:
 def owner_meta(request: Request) -> dict:
     """Who started a job: the user and a short hash of their session."""
     return {"started_by": viewer().username or "local",
-            "session": js.session_hash(request.cookies.get("sid") or request.cookies.get("asst_sid"))}
+            "session": js.session_hash(session_token(request) or request.cookies.get("asst_sid"))}
 
 
 def visible_subject_ids() -> set:
@@ -274,9 +274,9 @@ def _check_capacity(jobs) -> str:
 
 
 @router.post("/search", response_class=HTMLResponse, tags=["search-pages"])
-async def run_search(request: Request, query: str = Form(""), country: str = Form(...),
+async def run_search(request: Request, query: str = Form("", max_length=200), country: str = Form(..., max_length=64),
                      pages: int = Form(1), engines: list = Form(default=["google"]),
-                     device: str = Form("desktop"), subject_id: str = Form("")):
+                     device: str = Form("desktop", max_length=64), subject_id: str = Form("", max_length=64)):
     """One country: launches the search in the background (see module doc)."""
     main = _get_main()
     jobs = main.jobs
@@ -366,9 +366,9 @@ async def run_search(request: Request, query: str = Form(""), country: str = For
 
 
 @router.post("/search_multi", response_class=HTMLResponse, tags=["search-pages"])
-async def search_multi(request: Request, query: str = Form(""), countries: list = Form(default=[]),
+async def search_multi(request: Request, query: str = Form("", max_length=200), countries: list = Form(default=[]),
                        pages: int = Form(1), engines: list = Form(default=["google"]),
-                       device: str = Form("desktop"), subject_id: str = Form("")):
+                       device: str = Form("desktop", max_length=64), subject_id: str = Form("", max_length=64)):
     """One or more countries (the New search modal posts here)."""
     main = _get_main()
     jobs = main.jobs

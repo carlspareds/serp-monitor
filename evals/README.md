@@ -91,7 +91,7 @@ This prints a report and writes `evals/results.json`.
   network access to Google/Bing through Apify's actors. This repo ships
   no credentials (see `DATA.md`), and an eval suite that made paid API
   calls on every run would be a bad default for anyone cloning it.
-  `scripts/smoke_apify.py` exists for this: run it yourself with
+  `scripts/maintenance/smoke_apify.py` exists for this: run it yourself with
   `APIFY_API_KEY` set to check a live actor run.
 - **End-to-end search latency.** The dominant cost of a real search is
   Apify's own actor run time, which this codebase doesn't control. The
@@ -100,7 +100,7 @@ This prints a report and writes `evals/results.json`.
   isn't reported here as a metric. `processing_latency` above measures the
   part this codebase is responsible for.
 
-`scripts/smoke_apify.py` is not wired into `run_evals.py` on purpose, so
+`scripts/maintenance/smoke_apify.py` is not wired into `run_evals.py` on purpose, so
 cloning this repo never triggers a paid API call by accident.
 
 ## Assistant evals (`evals/assistant/`)

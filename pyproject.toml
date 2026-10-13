@@ -2,6 +2,11 @@
 target-version = "py312"
 
 [tool.ruff.lint]
+# S608 (SECURITY.md, item 13): flags SQL built with string formatting. Every
+# hit in this repo interpolates only whitelisted identifiers or "?"
+# placeholders (subject_id = ?, column lists from code) and carries a
+# `# noqa: S608 -- <why>` saying which; values are always bound parameters.
+extend-select = ["S608"]
 # B008: Form(...)/Depends(...) in defaults is FastAPI's standard idiom.
 ignore = ["B008"]
 

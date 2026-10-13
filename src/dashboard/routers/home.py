@@ -284,9 +284,9 @@ async def home(request: Request, country: str = ""):
     if len(countries) > 1:
         opts = "".join(f"<option value='{_esc(c)}'{' selected' if c == country else ''}>{_esc(c.upper())}</option>"
                        for c in countries)
-        country_html = (f"<form class='country-form' method='get' action='/'>"
+        country_html = (f"<form class='country-form' method='get' action='/' data-autosubmit>"
                         f"<label class='sr-only' for='ov-country'>Country</label>"
-                        f"<select id='ov-country' name='country' onchange='this.form.submit()'>{opts}</select>"
+                        f"<select id='ov-country' name='country'>{opts}</select>"
                         "<noscript><button class='btn small' type='submit'>Show</button></noscript></form>")
     else:
         country_html = _esc(country.upper())

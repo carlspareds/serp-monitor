@@ -2,6 +2,7 @@
 import re
 from datetime import UTC, datetime
 
+from common import crypto
 from database.base import (
     _BRANDING_DEFAULTS,
     _HEX_COLOR_RE,
@@ -20,33 +21,41 @@ class SettingsMixin:
     # 1); reads and deletes only see that subject's rows. The static, deployment-wide
     # list in config/positive_domains.py is still merged on top by the callers
     # (config.positive_domains.merged_with).
+    _DOMAIN_TABLES = ("positive_domains", "negative_domains")
+
     def _add_domain(self, table: str, domain: str) -> None:
+        if table not in self._DOMAIN_TABLES:  # identifier whitelist (interpolated below)
+            raise ValueError(f"unknown domain table {table!r}")
         domain = (domain or "").strip().lower()
         if not domain:
             return
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"INSERT OR IGNORE INTO {table} (domain, subject_id) VALUES (?, ?)",
+        cur.execute(f"INSERT OR IGNORE INTO {table} (domain, subject_id) VALUES (?, ?)",  # noqa: S608 -- table is a fixed identifier from code, never user input
                     (domain, self._active_subject_id(None)))
         conn.commit()
         conn.close()
 
     def _remove_domain(self, table: str, domain: str) -> None:
+        if table not in self._DOMAIN_TABLES:  # identifier whitelist (interpolated below)
+            raise ValueError(f"unknown domain table {table!r}")
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"DELETE FROM {table} WHERE domain = ? AND {subject_clause}",
+        cur.execute(f"DELETE FROM {table} WHERE domain = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound); table is a fixed identifier from code, never user input
                     ((domain or "").strip().lower(), *subject_params))
         conn.commit()
         conn.close()
 
     def _list_domains(self, table: str) -> list[str]:
+        if table not in self._DOMAIN_TABLES:  # identifier whitelist (interpolated below)
+            raise ValueError(f"unknown domain table {table!r}")
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
         # DISTINCT: a for_all_subjects() instance would otherwise list a domain once
         # per subject that owns it.
-        cur.execute(f"SELECT DISTINCT domain FROM {table} WHERE {subject_clause} "
+        cur.execute(f"SELECT DISTINCT domain FROM {table} WHERE {subject_clause} "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound); table is a fixed identifier from code, never user input
                     "ORDER BY domain", subject_params)
         rows = [r[0] for r in cur.fetchall()]
         conn.close()
@@ -81,9 +90,14 @@ class SettingsMixin:
         cur.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = cur.fetchone()
         conn.close()
-        return row[0] if row else default
+        if not row:
+            return default
+        # Secret-ish values may be stored encrypted (common.crypto).
+        return crypto.decrypt(row[0]) if crypto.is_encrypted(row[0]) else row[0]
 
     def set_setting(self, key: str, value: str) -> None:
+        if key in crypto.SENSITIVE_SETTINGS and value:
+            value = crypto.encrypt(value)
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
@@ -99,6 +113,29 @@ class SettingsMixin:
             apply_legacy_setting_to_subject_1(cur, key, value)
         conn.commit()
         conn.close()
+
+    def encrypt_sensitive_settings(self) -> int:
+        """Startup migration: with APP_ENCRYPTION_KEY set, encrypt every
+        SENSITIVE_SETTINGS value still stored in plain text. Returns how many
+        rows changed (0 without a key). Idempotent."""
+        if not crypto.key_configured() or crypto.check_key():
+            return 0
+        conn = self._connect()
+        try:
+            keys = sorted(crypto.SENSITIVE_SETTINGS)
+            rows = conn.execute(
+                f"SELECT key, value FROM settings WHERE key IN ({','.join('?' for _ in keys)})",  # noqa: S608 -- only '?' placeholders are interpolated
+                keys).fetchall()
+            changed = 0
+            for key, value in rows:
+                if value and not crypto.is_encrypted(value):
+                    conn.execute("UPDATE settings SET value = ? WHERE key = ?",
+                                 (crypto.encrypt(value), key))
+                    changed += 1
+            conn.commit()
+            return changed
+        finally:
+            conn.close()
 
     # ------------------------------------------------------------------ #
     # Client branding (5.1)

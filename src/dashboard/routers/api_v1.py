@@ -46,7 +46,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from apify.actors import ACTORS, VALID_DEVICES
 from dashboard.deps import db
@@ -243,8 +243,10 @@ _ALERT_PATCH_STATUSES = ("acknowledged", "resolved")
 
 
 class AlertStatusIn(BaseModel):
-    status: str
-    assignee: str = ""
+    # Explicit allowlist of writable fields (mass assignment): anything else
+    # in the JSON body is ignored, and both fields are bounded.
+    status: str = Field(max_length=32)
+    assignee: str = Field("", max_length=200)
 
 
 # --------------------------------------------------------------------- #

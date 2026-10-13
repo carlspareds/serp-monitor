@@ -28,7 +28,6 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import (
     http_exception_handler,
-    request_validation_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -46,7 +45,7 @@ sys.modules.setdefault("dashboard.main", sys.modules[__name__])
 
 from apify.runner import ApifyRunner
 from common import config_check
-from dashboard import deps, logging_setup, ui
+from dashboard import deps, logging_setup, security, ui
 from dashboard.context import SubjectMiddleware, is_fragment_request
 from dashboard.deps import db
 from dashboard.jobs import JobManager
@@ -134,6 +133,12 @@ _startup_log = logging.getLogger("scheduler")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging_setup.setup()
+    # Optional at-rest encryption of secret-ish settings (APP_ENCRYPTION_KEY):
+    # encrypt any value still stored in plain text. Never blocks startup.
+    try:
+        db.encrypt_sensitive_settings()
+    except Exception:
+        logging.getLogger("config").exception("settings_encryption_migration_failed")
     # Validate the configuration once, before serving anything: fatal
     # problems raise ConfigError so uvicorn exits non-zero; missing optional
     # keys (demo mode) only log one warning line. SKIP_CONFIG_CHECK=1 bypasses.
@@ -200,10 +205,13 @@ _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # --------------------------------------------------------------------- #
 _ERROR_COPY = {
     400: ("Something was missing", "Part of the request was missing or invalid. Go back and try again."),
+    401: ("Sign in required", "Sign in to continue."),
     403: ("You don't have access", "This area isn't available to your account."),
     404: ("Page not found", "This page doesn't exist or has moved."),
     405: ("Not allowed", "That action isn't available here."),
+    413: ("Too much data", "The request was larger than this app accepts."),
     422: ("Something was missing", "Part of the form was missing or invalid. Go back and try again."),
+    429: ("Slow down", "Too many requests. Try again in a moment."),
     500: ("Something went wrong", "The error was logged. Try again in a moment."),
 }
 
@@ -224,7 +232,7 @@ def error_response(status: int, message: str = "") -> HTMLResponse:
         return HTMLResponse(ui.overlay(title, f"<div class='empty'>{body_text}</div>"), status_code=status)
     body = (f"<div class='card empty-cta'><h2>{_esc(title)}</h2><p>{body_text}</p>"
             "<div class='actions-row'><a class='btn primary' href='/'>Go to the Overview</a>"
-            "<a class='btn ghost' href='javascript:history.back()'>Go back</a></div></div>")
+            "<a class='btn ghost' href='/' data-history-back>Go back</a></div></div>")
     try:
         html = page(title, body, active="", head=False)
     except Exception:  # noqa: BLE001 -- the error page must render even if the DB is down
@@ -292,9 +300,21 @@ async def csrf_middleware(request: Request, call_next):
 # last): CSRF first, then role checks, then first-run/auth.
 app.middleware("http")(role_middleware)
 app.middleware("http")(csrf_middleware)
-# Outermost: viewer, active subject (cookie, validated) and PRG flash for the
-# whole request -- pure ASGI so the ContextVars reach sync endpoints too.
+# Viewer, active subject (cookie, validated) and PRG flash for the whole
+# request -- pure ASGI so the ContextVars reach sync endpoints too.
 app.add_middleware(SubjectMiddleware)
+# Outer layers (SECURITY.md): rate limits (429), request body size (413),
+# then security headers / HTTPS on everything that goes out -- including
+# the 413/429 answers. Outermost of all: trusted reverse-proxy headers
+# (TRUSTED_PROXIES), so every layer sees the real client IP and scheme.
+app.add_middleware(security.RateLimitMiddleware, account_of=session_user)
+app.add_middleware(security.BodySizeLimitMiddleware)
+app.add_middleware(security.SecurityHeadersMiddleware)
+_trusted = (os.getenv("TRUSTED_PROXIES") or os.getenv("FORWARDED_ALLOW_IPS") or "").strip()
+if _trusted:
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+    app.add_middleware(ProxyHeadersMiddleware,
+                       trusted_hosts=[h.strip() for h in _trusted.split(",") if h.strip()])
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -311,7 +331,11 @@ async def _http_error(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def _validation_error(request: Request, exc: RequestValidationError):
     if _wants_json(request):
-        return await request_validation_exception_handler(request, exc)
+        # FastAPI's default body echoes the submitted value ("input") back:
+        # keep only where and what, never the value (it could be a secret).
+        errors = [{"loc": e.get("loc"), "msg": e.get("msg"), "type": e.get("type")}
+                  for e in exc.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
     return error_response(422)
 
 

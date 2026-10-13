@@ -96,7 +96,7 @@ def _latest_same_person_by_hash(cur, db) -> dict[str, str]:
     # would decide whether a URL belongs to the monitored subject.
     subject_clause, subject_params = db._subject_clause()
     rows = cur.execute(
-        f"SELECT url, same_person FROM search_results WHERE same_person IS NOT NULL "
+        f"SELECT url, same_person FROM search_results WHERE same_person IS NOT NULL "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         f"AND {subject_clause} ORDER BY (classified_by = 'human'), "
         "(classified_by = 'human' AND same_person = 'no'), COALESCE(human_at, ''), id",
         subject_params,
@@ -110,7 +110,7 @@ def _latest_domain_by_hash(cur, db) -> dict[str, str]:
     exact text."""
     subject_clause, subject_params = db._subject_clause()
     rows = cur.execute(
-        f"SELECT url, domain FROM search_results WHERE {subject_clause} ORDER BY id",
+        f"SELECT url, domain FROM search_results WHERE {subject_clause} ORDER BY id",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         subject_params,
     ).fetchall()
     out: dict[str, str] = {}
@@ -152,7 +152,7 @@ def _sweep_missing_alerts(db) -> None:
     # subject), duplicating them across subjects.
     subject_clause, subject_params = db._subject_clause()
     rows = cur.execute(
-        "SELECT * FROM url_lifecycle WHERE status = 'gone' AND classification = 'negative' "
+        "SELECT * FROM url_lifecycle WHERE status = 'gone' AND classification = 'negative' "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         f"AND {subject_clause}",
         subject_params,
     ).fetchall()
@@ -224,7 +224,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
         position = r.get("position")
         classification = r.get("classification")
         existing = cur.execute(
-            "SELECT * FROM url_lifecycle WHERE url_hash = ? AND country = ? AND engine = ? "
+            "SELECT * FROM url_lifecycle WHERE url_hash = ? AND country = ? AND engine = ? "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
             f"AND {lc_clause}",
             (h, country, engine, *lc_params),
         ).fetchone()
@@ -252,7 +252,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
         else:
             best_position = old_best
         cur.execute(
-            "UPDATE url_lifecycle SET url = ?, last_seen = ?, last_position = ?, "
+            "UPDATE url_lifecycle SET url = ?, last_seen = ?, last_position = ?, "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
             "best_position = ?, classification = ?, status = 'active', gone_since = NULL, "
             f"missed_runs = 0 WHERE url_hash = ? AND country = ? AND engine = ? AND {lc_clause}",
             (url, now, position, best_position, classification, h, country, engine,
@@ -262,7 +262,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
             reappeared_keys.add(f"url_gone:{h}:{country}:{engine}")
 
     run_clause, run_params = db._subject_clause()
-    cur.execute(f"UPDATE runs SET lifecycle_done = 1 WHERE apify_run_id = ? AND {run_clause}",
+    cur.execute(f"UPDATE runs SET lifecycle_done = 1 WHERE apify_run_id = ? AND {run_clause}",  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
                  (run_id, *run_params))
 
     if depth == 0:  # H1: empty run (or no valid positions) -- doesn't penalize
@@ -281,7 +281,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
         placeholders = ",".join("?" for _ in queries)
         cohort_clause, cohort_params = db._subject_clause()
         cohort_rows = cur.execute(
-            f"SELECT DISTINCT url FROM search_results WHERE country_code = ? "
+            f"SELECT DISTINCT url FROM search_results WHERE country_code = ? "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound); only '?' placeholders are interpolated
             f"AND query IN ({placeholders}) AND {cohort_clause}",
             (country, *queries, *cohort_params),
         ).fetchall()
@@ -294,7 +294,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
     # this run -- filtered by engine (1.1): without this, a bing run saw
     # URLs that only google had observed as "absent".
     missing_rows = cur.execute(
-        "SELECT * FROM url_lifecycle WHERE country = ? AND engine = ? "
+        "SELECT * FROM url_lifecycle WHERE country = ? AND engine = ? "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
         f"AND status IN ('active', 'fading') AND {lc_clause}",
         (country, engine, *lc_params),
     ).fetchall()
@@ -317,7 +317,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
         if missed >= gone_after:
             same_person = same_person_map.get(row["url_hash"])
             cur.execute(
-                "UPDATE url_lifecycle SET status = 'gone', gone_since = ?, missed_runs = ?, "
+                "UPDATE url_lifecycle SET status = 'gone', gone_since = ?, missed_runs = ?, "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
                 f"same_person = ? WHERE url_hash = ? AND country = ? AND engine = ? AND {lc_clause}",
                 (now, missed, same_person, row["url_hash"], country, engine, *lc_params),
             )
@@ -326,7 +326,7 @@ def update_url_lifecycle(db, run_id: str) -> None:
                 pending_wins.append((row["url_hash"], domain))
         else:
             cur.execute(
-                "UPDATE url_lifecycle SET status = 'fading', missed_runs = ? "
+                "UPDATE url_lifecycle SET status = 'fading', missed_runs = ? "  # noqa: S608 -- clause is the constant 'subject_id = ?' (values bound)
                 f"WHERE url_hash = ? AND country = ? AND engine = ? AND {lc_clause}",
                 (missed, row["url_hash"], country, engine, *lc_params),
             )

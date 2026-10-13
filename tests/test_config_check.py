@@ -56,10 +56,12 @@ def test_empty_environment_passes(tmp_path):
 
 def test_full_valid_config_has_no_errors_or_warnings(tmp_path):
     env = _demo_env(tmp_path)
-    env.update(APIFY_API_KEY="k", AUTH_USER="admin", AUTH_PASS="p", SMTP_HOST="smtp.x",
+    env.update(APIFY_API_KEY="k", AUTH_USER="admin", AUTH_PASS="a-long-passphrase",
+               SMTP_HOST="smtp.x",
                SMTP_USER="u", SMTP_PASS="p", SMTP_PORT="587", ALERT_EMAIL="a@b.c",
                SLACK_WEBHOOK_URL="https://hooks.slack.com/x", NTFY_TOPIC="t",
-               TELEGRAM_BOT_TOKEN="t", GEMINI_API_KEY="g")
+               TELEGRAM_BOT_TOKEN="t", GEMINI_API_KEY="g",
+               APP_ENCRYPTION_KEY="a-test-encryption-passphrase")
     report = cc.check_config(env, cwd=tmp_path)
     assert not report.errors and not report.warnings
 

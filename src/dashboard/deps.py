@@ -41,7 +41,10 @@ templates.env.globals["flash_html"] = _flash_html
 # PDF/XLSX generators (dashboard.main) -- a single definition instead of
 # copies of the same path invited to drift apart without anyone noticing
 # (review C23 2nd pass).
-exports_dir = project_root / "data" / "exports"
+# Sibling of the database file (like processing.evidence.evidence_dir):
+# data/exports/ in a default install, the test's tmp dir under pytest -- so
+# nothing a test generates lands in the repository.
+exports_dir = Path(db.db_path).resolve().parent / "exports"
 
 # Injects the process's single Database instance into the AI verdict
 # cache (2.5): processing/ai_classifier doesn't import dashboard/, so it

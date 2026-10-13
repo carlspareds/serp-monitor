@@ -28,6 +28,39 @@ for _key in ("GEMINI_API_KEY", "APIFY_API_KEY", "TELEGRAM_BOT_TOKEN", "SLACK_WEB
 import tempfile as _tempfile
 
 os.environ["ENV_FILE"] = os.path.join(_tempfile.gettempdir(), "seo-dashboard-tests.env")
+# Nothing a test does may land in the repository: a default DB_PATH (and so
+# data/exports/, data/evidence/ -- both siblings of the DB) in a temp dir.
+# The `client` fixture points DB_PATH at the test's own tmp_path anyway.
+_SUITE_TMP = _tempfile.mkdtemp(prefix="serp-tests-")
+os.environ["DB_PATH"] = os.path.join(_SUITE_TMP, "default.db")
+
+# AUTH BY DEFAULT (SECURITY.md, item 6): the app requires sign-in and a fresh
+# install shows "Create the admin account". Most of this suite exercises
+# pages, not auth, so it runs with the local-demo opt-out ALLOW_NO_AUTH=1
+# (legacy fail-open while no account exists; any account still turns
+# sign-in on). Tests about auth, roles and abuse protection use the
+# `strict_auth` fixture, which removes the opt-out, and set the bot-check /
+# rate-limit knobs they test explicitly.
+os.environ["ALLOW_NO_AUTH"] = "1"
+os.environ["BOT_MIN_SUBMIT_SECONDS"] = "0"
+os.environ["RATE_LIMIT_ENABLED"] = "0"
+for _key in ("HOST", "FORCE_HTTPS", "TRUSTED_PROXIES", "FORWARDED_ALLOW_IPS",
+             "APP_ENCRYPTION_KEY", "SESSION_IDLE_MINUTES", "SESSION_MAX_HOURS", "MAX_BODY_BYTES"):
+    os.environ.pop(_key, None)
+
+# TestClient's default peer is the made-up host "testclient"; ALLOW_NO_AUTH
+# only serves loopback peers, so the suite talks from 127.0.0.1 like a
+# browser on the same machine. Tests about remote clients pass client=...
+import starlette.testclient as _starlette_testclient
+
+_orig_testclient_init = _starlette_testclient.TestClient.__init__
+
+
+def _testclient_init(self, *args, client=("127.0.0.1", 50000), **kwargs):
+    _orig_testclient_init(self, *args, client=client, **kwargs)
+
+
+_starlette_testclient.TestClient.__init__ = _testclient_init
 from pathlib import Path
 
 import pytest
@@ -211,6 +244,41 @@ def admin_client(client, seeded_db, monkeypatch):
                        follow_redirects=False)
     client.cookies.set("sid", resp.cookies["sid"])
     return client
+
+
+@pytest.fixture
+def strict_auth(monkeypatch):
+    """Production auth: no ALLOW_NO_AUTH opt-out (sign-in always required)."""
+    monkeypatch.delenv("ALLOW_NO_AUTH", raising=False)
+
+
+def sign_in(client, db, username: str = "admin", password: str = "admin-password-123",
+            role: str = "admin", client_id: int | None = None) -> str:
+    """Create `username` (if missing) in `db` and sign `client` in as it.
+    Returns the session token."""
+    if db.get_user_by_username(username) is None:
+        db.add_user(username, password, role=role, client_id=client_id)
+    client.cookies.clear()
+    resp = client.post("/login", data={"username": username, "password": password},
+                       follow_redirects=False)
+    assert resp.status_code == 303 and resp.headers["location"] == "/", resp.headers
+    token = resp.cookies.get("sid")
+    assert token
+    client.cookies.set("sid", token)
+    return token
+
+
+def app_routes(app_or_routes):
+    """Every APIRoute of the app, flattening included routers (FastAPI wraps
+    each include_router() in an _IncludedRouter whose routes live on
+    .original_router)."""
+    from fastapi.routing import APIRoute
+    routes = getattr(app_or_routes, "routes", app_or_routes)
+    for r in routes:
+        if isinstance(r, APIRoute):
+            yield r
+        elif getattr(r, "original_router", None) is not None:
+            yield from app_routes(r.original_router.routes)
 
 
 def _clear_seeded_users() -> None:

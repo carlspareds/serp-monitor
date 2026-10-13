@@ -356,7 +356,7 @@ def main() -> None:
                 "Requires a live, paid Apify API key and real network access. "
                 "Not run here (no credentials ship with this repo, and it "
                 "would mean making real paid API calls from a public CI). "
-                "Run scripts/smoke_apify.py with your own APIFY_API_KEY to "
+                "Run scripts/maintenance/smoke_apify.py with your own APIFY_API_KEY to "
                 "check this against a live actor run."
             ),
             "end_to_end_search_latency": (

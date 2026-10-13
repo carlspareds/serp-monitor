@@ -106,10 +106,7 @@ SHELL_CHROME = """
 
 
 # Applies the saved theme before first paint (no flash). app.js owns the toggle.
-THEME_BOOT = (
-    "<script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('theme');"
-    "if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>"
-)
+THEME_BOOT = "<script src='/static/theme-boot.js'></script>"
 
 
 @dataclass(frozen=True)

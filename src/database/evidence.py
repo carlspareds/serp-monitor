@@ -44,7 +44,7 @@ class EvidenceMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT 1 FROM evidence WHERE url_hash = ? AND {subject_clause} LIMIT 1",
+        cur.execute(f"SELECT 1 FROM evidence WHERE url_hash = ? AND {subject_clause} LIMIT 1",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     (url_hash, *subject_params))
         row = cur.fetchone()
         conn.close()
@@ -56,7 +56,7 @@ class EvidenceMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM evidence WHERE url_hash = ? AND {subject_clause} "
+        cur.execute(f"SELECT * FROM evidence WHERE url_hash = ? AND {subject_clause} "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     f"ORDER BY id DESC", (url_hash, *subject_params))
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
@@ -68,7 +68,7 @@ class EvidenceMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM evidence WHERE {subject_clause} ORDER BY id DESC LIMIT ?",
+        cur.execute(f"SELECT * FROM evidence WHERE {subject_clause} ORDER BY id DESC LIMIT ?",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     (*subject_params, limit))
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
@@ -80,7 +80,7 @@ class EvidenceMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM evidence WHERE id = ? AND {subject_clause}",
+        cur.execute(f"SELECT * FROM evidence WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     (evidence_id, *subject_params))
         row = cur.fetchone()
         conn.close()

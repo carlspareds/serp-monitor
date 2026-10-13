@@ -1,0 +1,9 @@
+# Fake, key-shaped test values in commits made before the inline
+# "gitleaks:allow" markers were added (tests of the redaction code).
+# Format: <commit>:<file>:<rule>:<line> (gitleaks fingerprints).
+4d70da7090220e9cd644f0ad6588a925f9cb126e:tests/test_assistant_api.py:generic-api-key:116
+4d70da7090220e9cd644f0ad6588a925f9cb126e:tests/test_assistant_api.py:generic-api-key:13
+9e5c17791990feeb99ca173920586a837b37b8f5:tests/test_assistant_api.py:generic-api-key:116
+9e5c17791990feeb99ca173920586a837b37b8f5:tests/test_assistant_api.py:generic-api-key:13
+9e5c17791990feeb99ca173920586a837b37b8f5:tests/test_ui_consistency.py:generic-api-key:34
+a8fb5c10aa8c65cd09248b0660ab1d431286ad47:tests/test_ui_consistency.py:generic-api-key:34

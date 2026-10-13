@@ -25,7 +25,7 @@ class EventsMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM events WHERE {subject_clause} "
+        cur.execute(f"SELECT * FROM events WHERE {subject_clause} "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     f"ORDER BY event_date DESC, id DESC", subject_params)
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
@@ -35,7 +35,7 @@ class EventsMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"DELETE FROM events WHERE id = ? AND {subject_clause}",
+        cur.execute(f"DELETE FROM events WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                     (event_id, *subject_params))
         conn.commit()
         conn.close()

@@ -901,7 +901,7 @@ def test_every_subject_table_is_written_under_the_contextvar_subject(tmp_path):
     conn.commit()
     per_table = {}
     for table in Database._SUBJECT_TABLES:
-        per_table[table] = {r[0] for r in conn.execute(f"SELECT DISTINCT subject_id FROM {table}")}
+        per_table[table] = {r[0] for r in conn.execute(f"SELECT DISTINCT subject_id FROM {table}")}  # noqa: S608 -- table from Database._SUBJECT_TABLES
     conn.close()
     assert per_table == {t: {2} for t in Database._SUBJECT_TABLES}
 

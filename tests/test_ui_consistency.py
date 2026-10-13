@@ -31,7 +31,7 @@ def ai_on(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://llm.test/v1")
     monkeypatch.setenv("OPENAI_MODEL", "fake-model")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-consistency-1234")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-consistency-1234")  # gitleaks:allow (fake test value)
 
 
 # --------------------------------------------------------------------- #

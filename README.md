@@ -165,12 +165,21 @@ make run
 ```
 
 This creates a virtualenv, installs dependencies, copies `.env.example` to
-`.env` if missing, seeds a synthetic demo (see `DATA.md`) if the database
-is empty, and serves the dashboard on `127.0.0.1:8000` (open it in your
-browser yourself). Re-running it is safe: every step is skipped if
-already done. `make run` also starts the embedded scheduler (weekly
-report, daily alert check, daily info digest, weekly purge, watchdog); set
-`DISABLE_SCHEDULER=1` to turn it off.
+`.env` if missing (readable by you only), seeds a synthetic demo (see
+`DATA.md`) if the database is empty, and serves the dashboard on
+`127.0.0.1:8000` (open it in your browser yourself). Re-running it is safe:
+every step is skipped if already done. `make run` also starts the embedded
+scheduler (weekly report, daily alert check, daily info digest, weekly
+purge, watchdog); set `DISABLE_SCHEDULER=1` to turn it off.
+
+**Sign-in is required.** The first time you open it, it asks you to
+**create the admin account** (username and a password of at least 12
+characters; a passphrase works well), signs you in and shows the demo.
+Nothing else is served until that account exists, so create it right
+away. For a quick look on your own machine without an account, run
+`make demo` instead: it sets `ALLOW_NO_AUTH=1`, which works only on
+`127.0.0.1` (the app refuses to start with it on any other address, serves
+it to local clients only, and ignores it as soon as an account exists).
 
 The demo needs no API keys: four weekly US runs for the fictional Jordan Ashworth, results waiting in the review queue, 5 alerts, 3 evidence snapshots, 2 timeline events, one win on Analysis (a negative result that dropped out of the top) and 2 notes on the Notes board. The evidence snapshots are synthetic pages (the
 `.example` domains don't resolve) passed through the real hashing and
@@ -179,9 +188,10 @@ storage code.
 In-app pages worth knowing:
 
 - `/setup`, a setup wizard: Apify key, optional integrations (AI provider,
-  email, Telegram, Slack, ntfy), an admin account, and the tracked name.
-  Every step is skippable and the wizard resumes where you left off,
-  because it reads the real persisted config. Re-opening a step and
+  email, Telegram, Slack, ntfy), the admin account (already done if you
+  created it on the first visit; it can't be skipped), and the tracked
+  name. The other steps are skippable and the wizard resumes where you
+  left off, because it reads the real persisted config. Re-opening a step and
   submitting values saves them even after it was skipped. Everything it
   sets can also be changed later in Settings (General and Notifications).
 - `/onboarding`, the Getting started guide: a checklist that reflects what
@@ -189,26 +199,25 @@ In-app pages worth knowing:
 
 A demo-mode banner stays on every page until a real Apify key is set.
 
-**Authentication is off by default.** With no `AUTH_USER`/`AUTH_PASS` in
-`.env` and no user accounts in the database, every page is open. That is
-fine on `127.0.0.1`, which is all `make run` binds to. Before exposing it
-anywhere else, set `AUTH_USER` and `AUTH_PASS` in `.env` or create an
-admin account in the setup wizard or on `/users`.
-
-With auth on, accounts have one of three roles: `admin` (everything,
-including settings, secrets, backups, users and API keys), `operator`
-(day-to-day work such as searches, alerts and notes) and Viewer
-(read-only; stored as the `client_viewer` role). Logins lock for 60
-seconds after 5 failures, and form posts from another origin are
-rejected.
+Accounts have one of three roles: `admin` (everything, including
+settings, secrets, backups, users and API keys), `operator` (day-to-day
+work such as searches, alerts and notes) and Viewer (read-only; stored as
+the `client_viewer` role). Add them in Settings → Users. An optional env
+admin can also be set with `AUTH_USER`/`AUTH_PASS` in `.env`. Sign-in is
+rate limited and locks for 60 seconds (doubling up to an hour) after 5
+failures, sessions expire after 2 hours idle or 12 hours in total, and
+form posts from another origin are rejected. See
+[`SECURITY.md`](SECURITY.md) for everything else.
 
 ### Going from the demo to real data
 
 The demo runs and their alerts and evidence stay in the database when you
 add a real Apify key. To start clean, stop the app, delete
 `data/seo_dashboard.db` and `data/evidence/`, then start the server
-directly with `.venv/bin/uvicorn dashboard.main:app --app-dir src --port 8000`.
-`make run` would re-seed the empty database with the demo. Also edit
+directly with `.venv/bin/uvicorn dashboard.main:app --app-dir src --port 8000`
+(the new database has no accounts, so the first visit asks you to create
+the admin account again). `make run` would re-seed the empty database with
+the demo. Also edit
 `config/positive_domains.py`: its `POSITIVE_DOMAINS` list is hardcoded to
 the fictional Jordan Ashworth domains and is merged with whatever domains
 you add in the UI.
@@ -229,7 +238,15 @@ broken settings are:
 | Variable | Without it | Error when |
 |---|---|---|
 | `APIFY_API_KEY` | demo mode, no real searches (warning) | — |
-| `AUTH_USER` / `AUTH_PASS` | auth off unless a DB user exists | only one of the two is set |
+| `AUTH_USER` / `AUTH_PASS` | no env admin: the first visit creates the admin account | only one of the two is set (warning if `AUTH_PASS` is under 12 characters) |
+| `ALLOW_NO_AUTH` | sign-in required | `HOST` is not a loopback address (also with `SKIP_CONFIG_CHECK`; local demos only) |
+| `FORCE_HTTPS` | no redirect (fine on `127.0.0.1`) | — (warning if `HOST` is not loopback and it's unset); see [Deploying behind HTTPS](#deploying-behind-https) |
+| `TRUSTED_PROXIES` | `X-Forwarded-*` ignored (uvicorn trusts `127.0.0.1`) | — |
+| `APP_ENCRYPTION_KEY` | secret-ish DB settings stored in plain text | not a Fernet key or a 16+ character passphrase (warning if unset while Telegram is set up) |
+| `SESSION_IDLE_MINUTES` / `SESSION_MAX_HOURS` | 120 minutes idle / 12 hours | — |
+| `MAX_BODY_BYTES` | 1048576 (1 MiB) | — |
+| `RATE_LIMIT_ENABLED` / `RATE_LIMIT_<RULE>` | on, defaults in `SECURITY.md` | — |
+| `BOT_MIN_SUBMIT_SECONDS` | 1 | — |
 | `DB_PATH` | `data/seo_dashboard.db` | its directory can't be created or written, or it is a directory |
 | `ENV_FILE` | Settings writes to the repo `.env` | it is a directory, or its directory doesn't exist / isn't writable (a missing file is a warning: it is created on first save) |
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | no email | some but not all three are set |
@@ -246,17 +263,47 @@ broken settings are:
 | `AI_REASONING_EFFORT` | `low` (OpenAI-compatible only; `medium`/`high`, or `off` to never send it; dropped automatically for servers that reject it) | — |
 | `DISABLE_SCHEDULER` | scheduler on | — (any non-empty value disables it, even `0`: warning) |
 | `SUBJECT_QUERY` | name used in AI prompts and report titles when no tracked name is saved | — |
-| `HOST` | optional | — (warning if not localhost and auth is off) |
+| `HOST` | optional | — (see `ALLOW_NO_AUTH` and `FORCE_HTTPS`) |
 
 Other commands:
 
 ```
-make check  # validate the configuration (see above)
-make test   # run the test suite
-make lint   # ruff check
-make seed   # seed demo data (no-op if the database already has runs)
-make clean  # remove the virtualenv, the local database, evidence and exports
+make check    # validate the configuration (see above)
+make demo     # like `make run`, without sign-in, on 127.0.0.1 only
+make test     # run the test suite
+make lint     # ruff check
+make audit    # pip-audit: known vulnerabilities in the pinned dependencies
+make secrets  # gitleaks over the working tree and history (needs gitleaks)
+make seed     # seed demo data (no-op if the database already has runs)
+make clean    # remove the virtualenv, the local database, evidence and exports
 ```
+
+### Deploying behind HTTPS
+
+The app serves plain HTTP on `127.0.0.1`. To reach it from other machines,
+put a reverse proxy with TLS in front and keep the app on loopback.
+[Caddy](https://caddyserver.com) gets and renews a certificate by itself;
+the whole `Caddyfile` is:
+
+```
+monitor.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Then start the app with HTTPS enforced and the proxy trusted for
+`X-Forwarded-For`/`X-Forwarded-Proto`:
+
+```
+FORCE_HTTPS=1 TRUSTED_PROXIES=127.0.0.1 \
+  .venv/bin/uvicorn dashboard.main:app --app-dir src \
+  --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+```
+
+With `FORCE_HTTPS=1`, plain-http requests are redirected to https, HSTS is
+sent and every cookie is `Secure` (the session cookie becomes
+`__Host-sid`). Run a single worker: sessions and rate limits live in the
+process. Never combine a public address with `ALLOW_NO_AUTH`.
 
 ## Projects and subjects
 
@@ -337,15 +384,28 @@ tell you the process itself is down.
 
 ```
 src/
-  dashboard/   FastAPI app, routes, HTML rendering, setup wizard
+  dashboard/   FastAPI app, routes, HTML rendering, setup wizard,
+               security middlewares (headers, HTTPS, limits)
   database/    Database class (schema, queries, multi-tenant scoping)
+  auth/        password hashing and policy
+  common/      config check, redaction, validation, encryption, network guard
+  assistant/   the in-app assistant (tools, model harness)
   apify/       Apify actor client + per-engine result normalizers
   processing/  classification, alerts, diffing, evidence capture
   notify/      email / Telegram / Slack / ntfy senders
   scheduler/   embedded APScheduler jobs + watchdog
   export/      Excel and PDF report builders
   report/      weekly report orchestration
+tests/         pytest suite (tests/test_security_*.py: the SECURITY.md checks)
+static/, templates/   CSS, JS (no inline scripts), fonts, Jinja templates
+scripts/       seed, config check, weekly report, screenshots, git hook;
+               maintenance/ holds one-off repair tools for old databases
+config/        static domain lists and Apify actor settings
+docs/          screenshots, assistant and UI notes
+evals/         classifier and assistant evals (see evals/README.md)
 ```
+
+Security model, threat by threat: [`SECURITY.md`](SECURITY.md).
 
 **Where data goes.** Everything is stored locally in the SQLite file and
 `data/evidence/`. Data leaves the machine in these cases:
@@ -409,6 +469,15 @@ src/
   need a live, paid Apify key. See `evals/README.md` for what is measured
   instead.
 
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR: `make lint` and
+`make test` must pass (CI also runs the gitleaks secret scan and
+`pip-audit`), install the pre-commit hook once
+(`git config core.hooksPath scripts/hooks`), and keep any test data
+synthetic (`.example` domains, fictional names). Report security problems
+privately, see [`SECURITY.md`](SECURITY.md).
+
 ## Project history
 
 The public repo is published as a single clean commit. It was extracted
@@ -417,6 +486,12 @@ from a larger private tool, and all client data was removed (see
 from the original repo (credentials, real names, real domains) survived in
 an old diff. Carrying the old history forward and scrubbing it afterwards
 would have meant trusting a find-and-replace pass never to miss anything.
+
+Before publishing, the code went through a security pass, documented item
+by item in [`SECURITY.md`](SECURITY.md) (sign-in required from the first
+visit, CSP and security headers, rate limits, encrypted secret-ish
+settings, CI secret and dependency scanning), and one-off repair tools for
+databases from older versions moved to `scripts/maintenance/`.
 
 ## Design: uncertainty, human review, and evaluation
 

@@ -113,7 +113,7 @@ def aggregate_lifecycle(rows) -> dict[tuple, dict]:
     ((url, country, engine, subject_id, position, classification, scraped_at), in
     insertion order): key = (url_hash, country, engine, subject_id); first_seen =
     first observation; last_*/classification = the most recent; best_position = the
-    minimum. Used by the first-boot backfill and by scripts/split_subjects.py."""
+    minimum. Used by the first-boot backfill and by scripts/maintenance/split_subjects.py."""
     agg: dict[tuple, dict] = {}
     for url, country, engine, subject_id, position, classification, scraped_at in rows:
         h = url_hash(url or "")
@@ -182,11 +182,11 @@ class MigrationsMixin:
         (settings.url_key_version != URL_KEY_VERSION), recomputes every row.
         Idempotent: a second start finds nothing to do. Only this column is
         rewritten -- tables keyed by url_hash are merged by
-        scripts/repair_url_identity.py (dry-run first)."""
+        scripts/maintenance/repair_url_identity.py (dry-run first)."""
         row = cur.execute("SELECT value FROM settings WHERE key = 'url_key_version'").fetchone()
         current = row[0] if row else None
         where = "" if current != URL_KEY_VERSION else " WHERE url_key IS NULL"
-        rows = cur.execute(f"SELECT id, url, url_key FROM search_results{where}").fetchall()
+        rows = cur.execute(f"SELECT id, url, url_key FROM search_results{where}").fetchall()  # noqa: S608 -- where is built from constant fragments; values bound
         updates = [(url_hash(r[1] or ""), r[0]) for r in rows if url_hash(r[1] or "") != r[2]]
         if updates:
             cur.executemany("UPDATE search_results SET url_key = ? WHERE id = ?", updates)
@@ -375,10 +375,10 @@ class MigrationsMixin:
             shared = [c for c in old_cols if c in new_cols]
             col_list = ", ".join(shared)
             if preserve_rowid:
-                cur.execute(f"INSERT INTO {table} (rowid, {col_list}) "
+                cur.execute(f"INSERT INTO {table} (rowid, {col_list}) "  # noqa: S608 -- columns come from PRAGMA table_info, not user input; table is a fixed identifier from code, never user input
                              f"SELECT rowid, {col_list} FROM {table}_pre_c21b2")
             else:
-                cur.execute(f"INSERT INTO {table} ({col_list}) "
+                cur.execute(f"INSERT INTO {table} ({col_list}) "  # noqa: S608 -- columns come from PRAGMA table_info, not user input; table is a fixed identifier from code, never user input
                              f"SELECT {col_list} FROM {table}_pre_c21b2")
             cur.execute(f"DROP TABLE {table}_pre_c21b2")
 
@@ -528,7 +528,7 @@ class MigrationsMixin:
             cur.execute("UPDATE note_history SET to_status = ? WHERE to_status = ?", (new, old))
         placeholders = ",".join("?" for _ in NOTE_STATUSES)
         cur.execute(
-            "UPDATE url_notes SET status = 'open' "
+            "UPDATE url_notes SET status = 'open' "  # noqa: S608 -- only '?' placeholders are interpolated
             f"WHERE status IS NULL OR TRIM(status) = '' OR status NOT IN ({placeholders})",
             NOTE_STATUSES,
         )

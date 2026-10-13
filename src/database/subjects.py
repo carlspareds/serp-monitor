@@ -36,7 +36,7 @@ SUBJECT_TYPES = ("person", "company", "brand")
 
 def normalize_subject_name(name: str | None) -> str:
     """Case- and whitespace-insensitive identity of a name: ' Jordan  ASHWORTH ' ->
-    'jordan ashworth'. Used by find_subject_by_name and scripts/split_subjects.py."""
+    'jordan ashworth'. Used by find_subject_by_name and scripts/maintenance/split_subjects.py."""
     return " ".join((name or "").split()).casefold()
 
 
@@ -340,7 +340,7 @@ class SubjectsMixin:
         conn = self._connect()
         try:
             cur = conn.cursor()
-            cur.execute(f"UPDATE subjects SET {', '.join(sets)} WHERE id = ?",
+            cur.execute(f"UPDATE subjects SET {', '.join(sets)} WHERE id = ?",  # noqa: S608 -- SET list of constant 'col = ?' fragments
                         (*params, subject_id))
             if cur.rowcount == 0:
                 raise ValueError(f"subject {subject_id} does not exist")

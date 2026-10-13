@@ -1,0 +1,20 @@
+# Weekly dependency updates (SECURITY.md, item 20). Security advisories
+# also open PRs immediately when Dependabot security updates are enabled in
+# the repository settings.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]

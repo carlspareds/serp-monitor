@@ -192,8 +192,9 @@ Providers:
 ## Confirmation and audit
 
 - A proposal is a `PendingAction` with a random id (`secrets.token_urlsafe`),
-  bound to the session (hash of the `sid` cookie; with auth disabled, a
-  per-browser `asst_sid` cookie), the user and the subject, expiring after
+  bound to the session (hash of the session cookie; under the local-demo
+  opt-out `ALLOW_NO_AUTH`, a per-browser `asst_sid` cookie), the user and
+  the subject, expiring after
   10 minutes. Stored in memory: a restart drops proposals, which is the safe
   direction.
 - `POST /assistant/confirm {id}`: unknown or expired → 404; another session → 403;
@@ -269,7 +270,7 @@ no channel is configured (admins), "make a report".
 
 ## Panel fragment contract (for the UI)
 
-`GET /assistant/panel` returns one element (and, with auth disabled, sets the
+`GET /assistant/panel` returns one element (and, without sign-in under `ALLOW_NO_AUTH`, sets the
 per-browser `asst_sid` cookie so the first turn's progress/Stop match):
 
 ```html

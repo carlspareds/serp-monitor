@@ -8,6 +8,11 @@ uvicorn[standard]==0.53.0
 jinja2==3.1.6
 python-multipart==0.0.32
 
+# --- Security ---
+# Fernet encryption of secret-ish settings at rest (APP_ENCRYPTION_KEY,
+# src/common/crypto.py). Prebuilt wheels exist for x86_64 and ARM64.
+cryptography==50.0.2
+
 # --- Processing / export ---
 openpyxl==3.1.5
 reportlab==5.0.1

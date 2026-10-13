@@ -24,16 +24,17 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
+from auth.passwords import password_problem
 from dashboard.context import redirect_with_flash, viewer
 from dashboard.deps import db
 from dashboard.main import (
     audit,
     auth_enabled,
-    create_session,
     is_admin,
     revoke_sessions,
     session_user,
 )
+from dashboard.session import start_session
 from dashboard.ui_helpers import _esc
 from database.models import USER_ROLES
 
@@ -144,8 +145,8 @@ def _user_form(error: str = "", username: str = "", role: str = "operator") -> s
                                                        extra="required"),
                           "What they type to sign in.", "nu-name")
             + integ.field("Password", "<input id='nu-pass' type='password' name='password' required "
-                          "autocomplete='new-password'>",
-                          "At least 8 characters is a good idea. Share it with them privately.",
+                          "minlength='12' maxlength='1024' autocomplete='new-password'>",
+                          "At least 12 characters (a passphrase works well). Share it with them privately.",
                           "nu-pass")
             + "<fieldset class='field'><legend class='label'>Role</legend>"
             + _role_cards(role) + "</fieldset></form>")
@@ -181,8 +182,8 @@ async def ui_user_password(request: Request, user_id: int):
             "<form id='pw-form' method='post' action='/users/password' class='form-grid' data-sm-submit>"
             f"<input type='hidden' name='user_id' value='{target['id']}'>"
             + integ.field("New password", "<input id='pw-new' type='password' name='password' "
-                          "required autocomplete='new-password'>",
-                          "Share it with them privately.", "pw-new") + "</form>")
+                          "required minlength='12' maxlength='1024' autocomplete='new-password'>",
+                          "At least 12 characters. Share it with them privately.", "pw-new") + "</form>")
     foot = ("<button type='button' class='btn ghost' data-sm-close>Cancel</button>"
             "<button type='submit' class='btn primary' form='pw-form' "
             "data-busy-label='Saving…'>Set password</button>")
@@ -199,8 +200,9 @@ async def users_page(request: Request):
 
 
 @router.post("/users/add")
-async def users_add(request: Request, username: str = Form(""), password: str = Form(""),
-                    role: str = Form("operator")):
+async def users_add(request: Request, username: str = Form("", max_length=150),
+                    password: str = Form("", max_length=1024),
+                    role: str = Form("operator", max_length=32)):
     """Defensive params: everything arrives as str and an invalid value
     redirects back with a readable reason, without writing anything."""
     if not _require_admin(request):
@@ -210,7 +212,10 @@ async def users_add(request: Request, username: str = Form(""), password: str = 
     if not username or not password:
         return redirect_with_flash(_BACK, "Not created: username and password are required.", "error")
     if role not in USER_ROLES:
-        return redirect_with_flash(_BACK, f"Not created: unknown role {role}.", "error")
+        return redirect_with_flash(_BACK, "Not created: unknown role.", "error")
+    problem = password_problem(password, username)
+    if problem:
+        return redirect_with_flash(_BACK, f"Not created: {problem}", "error")
     first_account = not auth_enabled()
     if first_account and role != "admin":
         return redirect_with_flash(_BACK, "Not created: the first account must be an admin, "
@@ -235,17 +240,16 @@ async def users_add(request: Request, username: str = Form(""), password: str = 
           username=username, role=role, client_id=cid)
     if first_account:
         # Auth just turned on: sign the creator in as the new admin.
-        token = create_session(username)
-        audit(request, "login_ok", actor_type="user", actor_id=username)
         resp = redirect_with_flash(_BACK, f"Created {username}. Sign-in is now required, and "
                                           "you're signed in as this account.")
-        resp.set_cookie("sid", token, httponly=True, samesite="lax", max_age=86400)
+        start_session(resp, request, username)
+        audit(request, "login_ok", actor_type="user", actor_id=username)
         return resp
     return redirect_with_flash(_BACK, f"Created {username}.")
 
 
 @router.post("/users/toggle")
-async def users_toggle(request: Request, user_id: str = Form(""), active: str = Form("")):
+async def users_toggle(request: Request, user_id: str = Form("", max_length=64), active: str = Form("", max_length=64)):
     """Deactivate instead of delete: audit_log references users by
     name, and deleting the row would leave that trail pointing at no one.
     An admin CANNOT deactivate themselves."""
@@ -273,7 +277,8 @@ async def users_toggle(request: Request, user_id: str = Form(""), active: str = 
 
 
 @router.post("/users/password")
-async def users_password(request: Request, user_id: str = Form(""), password: str = Form("")):
+async def users_password(request: Request, user_id: str = Form("", max_length=20),
+                         password: str = Form("", max_length=1024)):
     if not _require_admin(request):
         return _deny()
     try:
@@ -285,10 +290,21 @@ async def users_password(request: Request, user_id: str = Form(""), password: st
     target = db.get_user(uid)
     if target is None:
         return redirect_with_flash(_BACK, "Unknown user.", "error")
+    problem = password_problem(password, target["username"])
+    if problem:
+        return redirect_with_flash(_BACK, f"Not changed: {problem}", "error")
     await run_in_threadpool(db.set_user_password, uid, password)
-    # Changing the password also closes any open sessions.
+    # Changing the password closes every open session of that account. An
+    # admin changing their OWN password gets a fresh session (rotated token)
+    # instead of being signed out.
+    who = session_user(request)
+    own = target["username"] == who
     revoked = revoke_sessions(target["username"])
     # WHO changed WHOSE password is audited -- never the value.
     audit(request, "user_set_password", resource_type="user", resource_id=uid,
+          actor_type="user" if who else None, actor_id=who or None,
           username=target["username"], sessions_revoked=revoked)
-    return redirect_with_flash(_BACK, f"Password changed for {target['username']}.")
+    resp = redirect_with_flash(_BACK, f"Password changed for {target['username']}.")
+    if own:
+        start_session(resp, request, target["username"])
+    return resp

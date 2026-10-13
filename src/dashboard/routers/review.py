@@ -71,7 +71,7 @@ def _get_result(result_id: int) -> dict | None:
     subject_clause, subject_params = db._subject_clause()
     conn = db._connect()
     try:
-        row = conn.execute(f"SELECT * FROM search_results WHERE id = ? AND {subject_clause}",
+        row = conn.execute(f"SELECT * FROM search_results WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                            (result_id, *subject_params)).fetchone()
     finally:
         conn.close()
@@ -219,8 +219,8 @@ async def review_verdict(
     request: Request,
     result_id: int,
     classification: Literal["positive", "negative", "neutral"] = Form(...),
-    done: str = Form("0"), total: str = Form("0"), skip: str = Form(""),
-    mode: str = Form(""), back: str = Form("/results"),
+    done: str = Form("0", max_length=64), total: str = Form("0", max_length=64), skip: str = Form("", max_length=64),
+    mode: str = Form("", max_length=64), back: str = Form("/results", max_length=2048),
 ):
     updated = db.set_review_verdict(result_id, classification)
     if updated is None:
@@ -239,8 +239,8 @@ async def review_verdict(
 
 @router.post("/review/{result_id}/not-this-person", response_class=HTMLResponse)
 async def review_not_this_person(request: Request, result_id: int,
-                                 done: str = Form("0"), total: str = Form("0"), skip: str = Form(""),
-                                 mode: str = Form(""), back: str = Form("/results")):
+                                 done: str = Form("0", max_length=64), total: str = Form("0", max_length=64), skip: str = Form("", max_length=64),
+                                 mode: str = Form("", max_length=64), back: str = Form("/results", max_length=2048)):
     """"Not this person" (2.3): same_person='no' -- a HUMAN identity verdict,
     immutable against automatic re-annotation (set_same_person_verdict)."""
     url = db.set_same_person_verdict(result_id)

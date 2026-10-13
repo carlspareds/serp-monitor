@@ -141,12 +141,12 @@ def test_auth_step_creates_admin_and_auto_logs_in(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
 
-    resp = fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password"})
+    resp = fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     assert resp.status_code == 303 and resp.headers["location"] == "/setup"
     assert "sid" in resp.cookies
 
     from dashboard.deps import db
-    assert db.authenticate_user("op", "op-password") is not None
+    assert db.authenticate_user("op", "op-password-long") is not None
 
 
 def test_replaying_auth_step_after_admin_exists_does_not_create_a_second_admin(fresh_client):
@@ -156,26 +156,26 @@ def test_replaying_auth_step_after_admin_exists_does_not_create_a_second_admin(f
     a no-op, not a way to plant a second, attacker-controlled account."""
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth", data={"username": "real-admin", "password": "real-pass"})
+    fresh_client.post("/setup/auth", data={"username": "real-admin", "password": "real-passphrase"})
 
     from fastapi.testclient import TestClient
 
     import dashboard.main as main_module
     attacker = TestClient(main_module.app, follow_redirects=False)  # no session cookie
 
-    resp = attacker.post("/setup/auth", data={"username": "attacker", "password": "hunter2"})
+    resp = attacker.post("/setup/auth", data={"username": "attacker", "password": "hunter2-hunter2"})
     assert resp.status_code == 303 and resp.headers["location"] == "/login"
 
     from dashboard.deps import db
     usernames = [u["username"] for u in db.list_users()]
     assert usernames == ["real-admin"]
-    assert db.authenticate_user("attacker", "hunter2") is None
+    assert db.authenticate_user("attacker", "hunter2-hunter2") is None
 
 
 def test_unauthenticated_visitor_is_redirected_to_login_once_auth_exists(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password"})
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
 
     from fastapi.testclient import TestClient
 
@@ -189,7 +189,7 @@ def test_unauthenticated_visitor_is_redirected_to_login_once_auth_exists(fresh_c
 def test_first_search_step_sets_the_default_query_and_redirects_to_search(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password"})
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
 
     resp = fresh_client.post("/setup/first-search", data={"query": "Jane Doe", "country": "us"})
     assert resp.status_code == 303 and resp.headers["location"] == "/search_page"
@@ -211,13 +211,13 @@ def test_wizard_is_resumable_after_completing_only_some_steps(fresh_client):
     fresh_client.post("/setup/integrations?skip=1")
 
     resp = fresh_client.get("/setup", follow_redirects=True)
-    assert "Protect this dashboard" in resp.text  # picks up at "auth", not back at step 1
+    assert "Create the admin account" in resp.text  # picks up at "auth", not back at step 1
 
 
 def test_wizard_completing_every_step_stops_the_forced_redirect(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password"})
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     fresh_client.post("/setup/first-search", data={"query": "Jane Doe", "country": "us"})
 
     resp = fresh_client.get("/")
@@ -227,7 +227,7 @@ def test_wizard_completing_every_step_stops_the_forced_redirect(fresh_client):
 def test_no_demo_banner_for_a_real_subject_even_without_an_apify_key(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password"})
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     fresh_client.post("/setup/first-search", data={"query": "Jane Doe", "country": "us"})
 
     resp = fresh_client.get("/")
@@ -238,7 +238,7 @@ def test_no_demo_banner_for_a_real_subject_even_without_an_apify_key(fresh_clien
 def test_first_search_turns_the_placeholder_subject_into_the_tracked_one(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
-    fresh_client.post("/setup/auth?skip=1")
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     resp = fresh_client.post("/setup/first-search", data={"query": "Jane  Doe", "country": "gb"})
     assert "subject=1" in resp.headers.get("set-cookie", "")
 
@@ -277,8 +277,9 @@ def test_skip_buttons_bypass_required_fields(fresh_client):
     fresh_client.post("/setup/apify?skip=1")
     fresh_client.post("/setup/integrations?skip=1")
     text = fresh_client.get("/setup").text
-    assert "formaction='/setup/auth?skip=1' formnovalidate" in text
-    fresh_client.post("/setup/auth?skip=1")
+    # Sign-in is required: the admin-account step has no Skip.
+    assert "/setup/auth?skip=1" not in text and "action='/setup/auth'" in text
+    fresh_client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     text = fresh_client.get("/setup").text
     assert "formaction='/setup/first-search?skip=1' formnovalidate" in text
 
@@ -344,7 +345,7 @@ def test_continue_after_setting_something_up_completes_the_step(fresh_client):
     assert db.get_setting("wizard_saved_integrations", "") == "1"
     assert db.get_setting("wizard_skipped_integrations", "") == ""
     resp = fresh_client.get("/setup", follow_redirects=True)
-    assert "Protect this dashboard" in resp.text
+    assert "Create the admin account" in resp.text
 
 
 def test_continue_with_nothing_set_up_is_a_skip(fresh_client):
@@ -409,7 +410,7 @@ def test_ai_dialog_from_the_wizard_saves_openai_compatible(fresh_client):
 def _finish_with_apify_skipped(client):
     client.post("/setup/apify?skip=1")
     client.post("/setup/integrations?skip=1")
-    client.post("/setup/auth?skip=1")
+    client.post("/setup/auth", data={"username": "op", "password": "op-password-long"})
     client.post("/setup/first-search?skip=1")
 
 

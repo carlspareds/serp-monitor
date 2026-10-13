@@ -25,7 +25,7 @@ _TRACKING_PARAMS = {"fbclid", "gclid", "srsltid", "mc_cid", "mc_eid", "_hsenc", 
                     "ref_src", "igshid", "msclkid"}
 # Bumped whenever normalize_url changes what counts as "the same page": the startup
 # migration (_ensure_url_keys) then recomputes search_results.url_key, and
-# scripts/repair_url_identity.py merges the other url_hash-keyed tables (re-run it
+# scripts/maintenance/repair_url_identity.py merges the other url_hash-keyed tables (re-run it
 # after an upgrade that bumps this). "3": locale path prefixes (_LOCALE_PATH_RULES).
 URL_KEY_VERSION = "3"
 

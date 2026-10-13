@@ -323,7 +323,7 @@ def test_multi_country_failure_marks_country_steps_error(client, monkeypatch):
 
 def test_runner_search_tags_on_status_with_engine():
     """ApifyRunner wraps the client's (status, elapsed) polls per engine and
-    still calls the legacy 2-arg on_status (scripts/smoke_apify.py)."""
+    still calls the legacy 2-arg on_status (scripts/maintenance/smoke_apify.py)."""
     from apify.runner import ApifyRunner
 
     class _Client:

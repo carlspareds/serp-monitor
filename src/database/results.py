@@ -223,7 +223,7 @@ class ResultsMixin:
         nulls = f"{col} IS NULL, " if col in self._NULLABLE_SORT_COLUMNS else ""
         params.append(limit)
         cur.execute(
-            f"SELECT * FROM search_results {where} "
+            f"SELECT * FROM search_results {where} "  # noqa: S608 -- ORDER BY column/direction from a whitelist; where is built from constant fragments; values bound
             f"ORDER BY {nulls}{col} {direction} LIMIT ?",
             params,
         )
@@ -247,7 +247,7 @@ class ResultsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause(alias="sr")
         sql = (
-            "SELECT sr.* FROM results_fts f "
+            "SELECT sr.* FROM results_fts f "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             "JOIN search_results sr ON sr.id = f.rowid "
             f"WHERE results_fts MATCH ? AND {subject_clause} ORDER BY rank LIMIT ?"
         )
@@ -269,7 +269,7 @@ class ResultsMixin:
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
         cur.execute(
-            "SELECT DISTINCT substr(scraped_at, 1, 10) AS d FROM search_results "
+            "SELECT DISTINCT substr(scraped_at, 1, 10) AS d FROM search_results "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"WHERE country_code = ? AND scraped_at IS NOT NULL AND {subject_clause} ORDER BY d DESC",
             (country_code, *subject_params),
         )
@@ -296,14 +296,14 @@ class ResultsMixin:
         subject_clause, subject_params = self._subject_clause()
         if date:
             cur.execute(
-                "SELECT run_id FROM search_results WHERE country_code = ? "
+                "SELECT run_id FROM search_results WHERE country_code = ? "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"AND substr(scraped_at, 1, 10) = ? AND engine = ? AND {subject_clause} "
                 "ORDER BY id DESC LIMIT 1",
                 (country_code, date, engine, *subject_params),
             )
         else:
             cur.execute(
-                "SELECT run_id FROM search_results WHERE country_code = ? "
+                "SELECT run_id FROM search_results WHERE country_code = ? "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"AND engine = ? AND {subject_clause} ORDER BY id DESC LIMIT 1",
                 (country_code, engine, *subject_params),
             )
@@ -335,13 +335,13 @@ class ResultsMixin:
         subject_clause, subject_params = self._subject_clause()
         if date:
             cur.execute(
-                "SELECT run_id, MAX(id) FROM search_results WHERE country_code = ? "
+                "SELECT run_id, MAX(id) FROM search_results WHERE country_code = ? "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"AND substr(scraped_at, 1, 10) = ? AND {subject_clause} GROUP BY engine, device",
                 (country_code, date, *subject_params),
             )
         else:
             cur.execute(
-                "SELECT run_id, MAX(id) FROM search_results WHERE country_code = ? "
+                "SELECT run_id, MAX(id) FROM search_results WHERE country_code = ? "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                 f"AND {subject_clause} GROUP BY engine, device",
                 (country_code, *subject_params),
             )
@@ -407,7 +407,7 @@ class ResultsMixin:
         self.reapply_human_verdicts()
         subject_clause, subject_params = self._subject_clause()
         query = (
-            "SELECT id, run_id, url, title, description, domain, classification, confidence, "
+            "SELECT id, run_id, url, title, description, domain, classification, confidence, "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             "classified_by, review_status, ai_reason FROM search_results "
             f"WHERE (classified_by != 'human' OR classified_by IS NULL) AND {subject_clause}"
         )
@@ -511,7 +511,7 @@ class ResultsMixin:
             WHERE url IS NOT NULL AND url <> '' {homonym_clause} AND {subject_clause}
             GROUP BY url, engine, d
             ORDER BY url, engine, d
-            """,
+            """,  # noqa: S608 -- constant fragment; subject_clause is the constant 'subject_id = ?' (values bound)
             subject_params,
         )
         agg = cur.fetchall()
@@ -522,7 +522,7 @@ class ResultsMixin:
             SELECT url, engine, title, classification FROM search_results
             WHERE url IS NOT NULL AND url <> '' {homonym_clause} AND {subject_clause}
             ORDER BY id
-            """,
+            """,  # noqa: S608 -- constant fragment; subject_clause is the constant 'subject_id = ?' (values bound)
             subject_params,
         )
         titles, classes = {}, {}
@@ -646,7 +646,7 @@ class ResultsMixin:
             {where}
             GROUP BY day
             ORDER BY day
-            """,
+            """,  # noqa: S608 -- where is built from constant fragments; values bound
             [_SERIES_NULL_SEVERITY, *params],
         )
         rows = [dict(r) for r in cur.fetchall()]

@@ -568,9 +568,9 @@ def test_list_victories_excludes_gone_positives_and_old_entries(tmp_path):
     conn.execute(
         "INSERT INTO url_lifecycle (url_hash, url, country, first_seen, last_seen, "
         "best_position, last_position, classification, status, gone_since, missed_runs) "
-        f"VALUES (?, ?, 'us', '{_recent_iso()}', '{_recent_iso()}', 1, 1, "
-        f"'positive', 'gone', '{_recent_iso()}', 3)",
-        (url_hash("https://positive.example/x"), "https://positive.example/x"),
+        "VALUES (?, ?, 'us', ?, ?, 1, 1, 'positive', 'gone', ?, 3)",
+        (url_hash("https://positive.example/x"), "https://positive.example/x",
+         _recent_iso(), _recent_iso(), _recent_iso()),
     )
     conn.commit()
     conn.close()
@@ -585,9 +585,9 @@ def test_list_victories_respects_country_filter(tmp_path):
     conn.execute(
         "INSERT INTO url_lifecycle (url_hash, url, country, first_seen, last_seen, "
         "best_position, last_position, classification, status, gone_since, missed_runs) "
-        f"VALUES (?, ?, 'ca', '{_recent_iso()}', '{_recent_iso()}', 1, 1, "
-        f"'negative', 'gone', '{_recent_iso()}', 3)",
-        (url_hash("https://ca-only.example/x"), "https://ca-only.example/x"),
+        "VALUES (?, ?, 'ca', ?, ?, 1, 1, 'negative', 'gone', ?, 3)",
+        (url_hash("https://ca-only.example/x"), "https://ca-only.example/x",
+         _recent_iso(), _recent_iso(), _recent_iso()),
     )
     conn.commit()
     conn.close()
@@ -606,9 +606,9 @@ def test_analysis_page_shows_victorias_section_with_a_real_row(client, seeded_db
     conn.execute(
         "INSERT INTO url_lifecycle (url_hash, url, country, first_seen, last_seen, "
         "best_position, last_position, classification, status, gone_since, missed_runs) "
-        f"VALUES (?, ?, 'us', '{_recent_iso(10)}', '{_recent_iso(10)}', 7, 7, "
-        f"'negative', 'gone', '{gone_since}', 3)",
-        (url_hash("https://victorious.example/x"), "https://victorious.example/x"),
+        "VALUES (?, ?, 'us', ?, ?, 7, 7, 'negative', 'gone', ?, 3)",
+        (url_hash("https://victorious.example/x"), "https://victorious.example/x",
+         _recent_iso(10), _recent_iso(10), gone_since),
     )
     conn.commit()
     conn.close()

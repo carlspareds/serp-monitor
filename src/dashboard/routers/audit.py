@@ -20,6 +20,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from dashboard.deps import db
 from dashboard.ui_helpers import _esc
+from export.excel_exporter import neutralize_formula
 
 router = APIRouter()
 
@@ -197,12 +198,15 @@ async def audit_page(action: str = "", resource_id: str = ""):
 
 @router.get("/audit/export.csv")
 async def audit_export_csv(action: str = "", resource_id: str = "", limit: int = 1000):
-    rows = db.list_audit(limit=limit, action=action, resource_id=resource_id)
+    rows = db.list_audit(limit=min(max(limit, 1), 10_000), action=action[:100],
+                         resource_id=resource_id[:500])
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(_CSV_COLUMNS)
     for r in rows:
-        writer.writerow([r.get(col, "") for col in _CSV_COLUMNS])
+        # Audit params carry user-typed text (notes, URLs, names): neutralize
+        # spreadsheet formulas like every other CSV/XLSX export.
+        writer.writerow([neutralize_formula(r.get(col, "")) for col in _CSV_COLUMNS])
     buf.seek(0)
     return StreamingResponse(
         buf, media_type="text/csv",

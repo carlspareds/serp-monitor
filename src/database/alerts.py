@@ -101,7 +101,7 @@ class AlertsMixin:
             params.append(created_to + "T23:59:59" if len(created_to) == 10 else created_to)
         where = "WHERE " + " AND ".join(clauses) + " "
         params.append(limit)
-        cur.execute(f"SELECT * FROM alerts {where}ORDER BY id DESC LIMIT ?", params)
+        cur.execute(f"SELECT * FROM alerts {where}ORDER BY id DESC LIMIT ?", params)  # noqa: S608 -- where is built from constant fragments; values bound
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
         return rows
@@ -110,7 +110,7 @@ class AlertsMixin:
         conn = self._connect()
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
-        cur.execute(f"SELECT COUNT(*) FROM alerts WHERE seen = 0 AND {subject_clause}", subject_params)
+        cur.execute(f"SELECT COUNT(*) FROM alerts WHERE seen = 0 AND {subject_clause}", subject_params)  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         n = cur.fetchone()[0]
         conn.close()
         return n
@@ -123,7 +123,7 @@ class AlertsMixin:
         subject_clause, subject_params = self._subject_clause()
         conn = self._connect()
         cur = conn.cursor()
-        cur.execute(f"UPDATE alerts SET seen = 1 WHERE seen = 0 AND {subject_clause}",
+        cur.execute(f"UPDATE alerts SET seen = 1 WHERE seen = 0 AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
                      subject_params)
         conn.commit()
         conn.close()
@@ -143,7 +143,7 @@ class AlertsMixin:
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE alerts SET status = 'acknowledged', assignee = ? "
+            f"UPDATE alerts SET status = 'acknowledged', assignee = ? "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             f"WHERE id = ? AND {subject_clause}",
             (assignee, alert_id, *subject_params),
         )
@@ -165,7 +165,7 @@ class AlertsMixin:
         conn = self._connect()
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE alerts SET snoozed_until = ? WHERE id = ? AND {subject_clause}",
+            f"UPDATE alerts SET snoozed_until = ? WHERE id = ? AND {subject_clause}",  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             (until_iso, alert_id, *subject_params),
         )
         conn.commit()
@@ -195,7 +195,7 @@ class AlertsMixin:
         # AND status != 'resolved': idempotent resolve (a double click doesn't mutate the
         # key again).
         cur.execute(
-            "UPDATE alerts SET status = 'resolved', resolved_at = ?, resolved_by = ?, "
+            "UPDATE alerts SET status = 'resolved', resolved_at = ?, resolved_by = ?, "  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
             "dedupe_key = dedupe_key || '#resolved#' || id "
             f"WHERE id = ? AND status != 'resolved' AND {subject_clause}",
             (resolved_at, by, alert_id, *subject_params),
@@ -219,7 +219,7 @@ class AlertsMixin:
         if not include_snoozed:
             where += " AND (snoozed_until IS NULL OR snoozed_until <= ?)"
             params.append(now)
-        cur.execute(f"SELECT * FROM alerts WHERE {where} ORDER BY id DESC", params)
+        cur.execute(f"SELECT * FROM alerts WHERE {where} ORDER BY id DESC", params)  # noqa: S608 -- where is built from constant fragments; values bound
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
         return rows
@@ -292,7 +292,7 @@ class AlertsMixin:
         if country:
             where += " AND country = ?"
             params.append(country)
-        cur.execute(f"SELECT * FROM url_lifecycle {where} ORDER BY gone_since DESC", params)
+        cur.execute(f"SELECT * FROM url_lifecycle {where} ORDER BY gone_since DESC", params)  # noqa: S608 -- where is built from constant fragments; values bound
         rows = [dict(r) for r in cur.fetchall()]
         conn.close()
         return rows
@@ -362,7 +362,7 @@ class AlertsMixin:
         conn = self._connect()
         cur = conn.cursor()
         subject_clause, subject_params = self._subject_clause()
-        cur.execute(f"SELECT * FROM alerts WHERE id = ? AND {subject_clause}", (alert_id, *subject_params))
+        cur.execute(f"SELECT * FROM alerts WHERE id = ? AND {subject_clause}", (alert_id, *subject_params))  # noqa: S608 -- subject_clause is the constant 'subject_id = ?' (values bound)
         row = cur.fetchone()
         conn.close()
         return dict(row) if row else None

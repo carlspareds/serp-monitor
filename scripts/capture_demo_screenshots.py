@@ -105,6 +105,10 @@ def main():
             "DB_PATH": str(tmp_dir / "seo_dashboard.db"),
             "ENV_FILE": str(env_file),
             "DISABLE_SCHEDULER": "1",
+            # Throwaway local server on 127.0.0.1 with no account: the
+            # local-demo opt-out (SECURITY.md, item 6) skips sign-in.
+            "ALLOW_NO_AUTH": "1",
+            "HOST": "127.0.0.1",
             "PYTHONPATH": "src",
         })
 

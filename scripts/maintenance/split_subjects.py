@@ -1,8 +1,8 @@
 """Splits a single-subject database whose subject 1 accumulated searches for
 OTHER people/brands into one Subject per tracked name (multi-subject phase 1).
 
-    .venv/bin/python scripts/split_subjects.py --dry-run [--db PATH]
-    .venv/bin/python scripts/split_subjects.py [--db PATH]
+    .venv/bin/python scripts/maintenance/split_subjects.py --dry-run [--db PATH]
+    .venv/bin/python scripts/maintenance/split_subjects.py [--db PATH]
 
 Before multi-subject support every search landed on subject 1, so a DB used to
 look up "Alex Rivera" once next to the tracked "Jordan Ashworth" mixes both
@@ -55,7 +55,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
+_ROOT = Path(__file__).resolve().parent.parent.parent
 for _p in (str(_ROOT), str(_ROOT / "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -315,11 +315,11 @@ def apply_plan(db: Database, plan: dict) -> dict[str, int]:
         for g in plan["groups"]:
             sid = ids[g["key"]]
             marks = ",".join("?" for _ in g["run_ids"])
-            cur.execute(f"UPDATE runs SET subject_id = ? WHERE subject_id = ? "
+            cur.execute(f"UPDATE runs SET subject_id = ? WHERE subject_id = ? "  # noqa: S608 -- only '?' placeholders are interpolated
                         f"AND id IN ({marks})", (sid, PRIMARY, *g["run_ids"]))
             if g["apify_run_ids"]:
                 marks = ",".join("?" for _ in g["apify_run_ids"])
-                cur.execute(f"UPDATE search_results SET subject_id = ? WHERE subject_id = ? "
+                cur.execute(f"UPDATE search_results SET subject_id = ? WHERE subject_id = ? "  # noqa: S608 -- only '?' placeholders are interpolated
                             f"AND run_id IN ({marks})", (sid, PRIMARY, *g["apify_run_ids"]))
         # OR IGNORE (lifecycle, notes): only an EXISTING target subject can already
         # hold the same key; its own row wins and subject 1's stays where it was.
@@ -373,7 +373,7 @@ def counts_per_subject(db_path: str) -> dict[int, dict[str, int]]:
     try:
         for table in Database._SUBJECT_TABLES:
             for sid, n in conn.execute(
-                    f"SELECT subject_id, COUNT(*) FROM {table} GROUP BY subject_id"):
+                    f"SELECT subject_id, COUNT(*) FROM {table} GROUP BY subject_id"):  # noqa: S608 -- table is a fixed identifier from code, never user input
                 out[sid][table] = n
     finally:
         conn.close()

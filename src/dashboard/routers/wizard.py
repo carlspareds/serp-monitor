@@ -16,7 +16,10 @@ same admin.set_env/db.set_setting calls used here -- the wizard is a
 guided front door to that config, not a separate copy of it). Every step
 that isn't the required Apify key can be explicitly skipped, recorded in
 its own `wizard_skipped_<step>` setting so a skip sticks instead of
-re-prompting forever.
+re-prompting forever. The admin-account step is the exception: sign-in is
+required (SECURITY.md, item 6), so it can't be skipped -- on a normal
+install it is already done before the wizard opens (/setup/admin creates
+the first admin), and it only shows up under the ALLOW_NO_AUTH demo opt-out.
 """
 import os
 
@@ -25,6 +28,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
 from apify.client import ApifyClient, ApifyError
+from auth.passwords import password_problem
 from dashboard import admin
 from dashboard import integrations as integ
 from dashboard.context import SUBJECT_COOKIE
@@ -34,11 +38,10 @@ from dashboard.main import (
     _env_file,
     _esc,
     audit,
-    auth_enabled,
-    create_session,
     is_admin,
     page,
 )
+from dashboard.session import credentials_exist, start_session
 from dashboard.ui_helpers import country_name
 from database.models import DEFAULT_CLIENT_ID
 from notify import ROUTING_NOTE, channel_status
@@ -94,13 +97,15 @@ def _step_configured(step: str) -> bool:
         return (db.get_setting("wizard_saved_integrations", "") == "1"
                 or any(_integrations_configured().values()))
     if step == "auth":
-        return auth_enabled()
+        return credentials_exist()
     if step == "first_search":
         return bool(db.get_tracked_query())
     return True
 
 
 def _step_skipped(step: str) -> bool:
+    if step == "auth":   # sign-in can't be skipped (an old skip no longer counts)
+        return False
     return db.get_setting(f"wizard_skipped_{step}", "") == "1"
 
 
@@ -134,7 +139,7 @@ def _progress_html(step: str | None) -> str:
     steps = [
         ("apify", "1. Search"),
         ("integrations", "2. Integrations"),
-        ("auth", "3. Sign-in"),
+        ("auth", "3. Admin account"),
         ("first_search", "4. First subject"),
     ]
     items = []
@@ -259,25 +264,23 @@ async def setup(request: Request, error: str = "", notice: str = ""):
 
     if step == "auth":
         return _wrap(
-            "<h2>3. Protect this dashboard</h2>"
-            "<p class='muted'>Right now, anyone who can reach this app can see and change "
-            "everything. That's fine on your own machine, but not once you expose it "
-            "beyond localhost (a shared network, a tunnel, a public server). Create an "
-            "admin account to require sign-in.</p>"
+            "<h2>3. Create the admin account</h2>"
+            "<p class='muted'>Sign-in is required. This first account manages users, settings "
+            "and API keys; you can add operators and read-only viewers later in "
+            "<a href='/settings#users'>Settings → Users</a>.</p>"
             f"{err_html}"
             "<form method='post' action='/setup/auth'>"
             "<div class='form-grid wizard-form'>"
             + integ.field("Username", integ.text_input("wz-user", "username", "", "e.g. admin",
-                                                       extra="required"), "", "wz-user")
+                                                       extra="required maxlength='150'"), "", "wz-user")
             + integ.field("Password", "<input id='wz-pass' type='password' name='password' "
-                          "required autocomplete='new-password'>",
-                          "At least 8 characters is a good idea.", "wz-pass")
+                          "required minlength='12' maxlength='1024' autocomplete='new-password'>",
+                          "At least 12 characters. A passphrase of a few words works well.",
+                          "wz-pass")
             + "<div class='actions-row'><button type='submit' class='btn primary'>Create admin "
-              "account and continue</button>"
-            "<button type='submit' formaction='/setup/auth?skip=1' formnovalidate "
-            "class='btn ghost'>Skip, keep it open for now</button></div></div>"
+              "account and continue</button></div></div>"
             "</form>",
-            "Setup · Auth",
+            "Setup · Admin account",
             step=step,
         )
 
@@ -309,7 +312,7 @@ async def setup(request: Request, error: str = "", notice: str = ""):
 
 
 @router.post("/setup/apify", response_class=HTMLResponse)
-async def setup_apify(request: Request, apikey: str = Form("")):
+async def setup_apify(request: Request, apikey: str = Form("", max_length=1024)):
     if not _setup_write_allowed(request):
         return RedirectResponse("/login", status_code=303)
     apikey = apikey.strip()
@@ -371,46 +374,37 @@ async def setup_integrations(request: Request):
 
 
 @router.post("/setup/auth", response_class=HTMLResponse)
-async def setup_auth(request: Request, username: str = Form(""), password: str = Form("")):
-    # CRITICAL: this step's own _step_done("auth") check (below) already
-    # covers it -- auth_enabled() becomes True the instant this succeeds
-    # once, and _step_done short-circuits any replay from then on. This
-    # endpoint exists specifically to create an account with NO auth
-    # required, which is only safe while no auth exists yet at all.
-    if _step_done("auth"):
+async def setup_auth(request: Request, username: str = Form("", max_length=150),
+                     password: str = Form("", max_length=1024)):
+    """Creates the first admin from the wizard. Only while NO credentials
+    exist (in practice: the ALLOW_NO_AUTH demo opt-out, since otherwise
+    /setup/admin already did it); a replay afterwards is a redirect. Not
+    skippable: sign-in is required."""
+    if credentials_exist():
         return RedirectResponse("/setup", status_code=303)
-    if request.query_params.get("skip"):
-        db.set_setting("wizard_skipped_auth", "1")
-        audit(request, "wizard_skip", step="auth")
-        _mark_complete_if_done()
-        return RedirectResponse("/setup", status_code=303)
-
     username = username.strip()
     if not username or not password:
         return await setup(request, error="Username and password are required.")
+    problem = password_problem(password, username)
+    if problem:
+        return await setup(request, error=problem)
     try:
         # PBKDF2 is deliberately slow: hash off the event loop.
         await run_in_threadpool(db.add_user, username, password, role="admin")
     except Exception:  # noqa: BLE001 -- username UNIQUE, or any other DB rejection
-        return await setup(request, error=f"Could not create user '{username}' "
-                                          "(name already taken?).")
+        return await setup(request, error="Could not create that account (name already taken?).")
     audit(request, "wizard_auth_create", username=username, role="admin")
     _mark_complete_if_done()
-    # Creating this account just made auth_enabled() True (see
-    # dashboard.main.auth_enabled) -- auth_middleware would otherwise bounce
-    # the very next request (continuing the wizard) to /login, since no
-    # session exists yet for the account just created. Log them in
-    # immediately via main.create_session (NOT a directly-imported
-    # _SESSIONS reference -- see that function's docstring for why).
-    token = create_session(username)
-    audit(request, "login_ok", actor_type="user", actor_id=username)
+    # Creating this account just turned sign-in on: sign the creator in so
+    # the very next request (continuing the wizard) isn't bounced to /login.
     resp = RedirectResponse("/setup", status_code=303)
-    resp.set_cookie("sid", token, httponly=True, samesite="lax", max_age=86400)
+    start_session(resp, request, username)
+    audit(request, "login_ok", actor_type="user", actor_id=username)
     return resp
 
 
 @router.post("/setup/first-search", response_class=HTMLResponse)
-async def setup_first_search(request: Request, query: str = Form(""), country: str = Form("us")):
+async def setup_first_search(request: Request, query: str = Form("", max_length=200), country: str = Form("us", max_length=64)):
     if not _setup_write_allowed(request):
         return RedirectResponse("/login", status_code=303)
     if _step_done("first_search"):
