@@ -406,6 +406,8 @@ evals/         classifier and assistant evals (see evals/README.md)
 ```
 
 Security model, threat by threat: [`SECURITY.md`](SECURITY.md).
+The main design decisions, with their reasons and trade-offs, decision by
+decision: [`docs/adr/`](docs/adr/).
 
 **Where data goes.** Everything is stored locally in the SQLite file and
 `data/evidence/`. Data leaves the machine in these cases:
@@ -477,6 +479,10 @@ Issues and pull requests are welcome. Before opening a PR: `make lint` and
 (`git config core.hooksPath scripts/hooks`), and keep any test data
 synthetic (`.example` domains, fictional names). Report security problems
 privately, see [`SECURITY.md`](SECURITY.md).
+
+Add a line for your change to [`CHANGELOG.md`](CHANGELOG.md) under
+*Unreleased*. A change to one of the decisions in `docs/adr/` comes with a
+new ADR; `docs/adr/README.md` has the template.
 
 ## Project history
 
