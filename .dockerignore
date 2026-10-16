@@ -1,0 +1,33 @@
+# Build context for the Dockerfile. The image copies only config/ src/
+# static/ templates/ docs/ scripts/ and requirements.txt; this keeps secrets,
+# local data and dev-only files out of the context (and out of any future
+# broader COPY).
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Secrets and local data (never in the image: they are mounted at run time)
+.env
+.env.*
+data
+exports
+*.db
+*.db-*
+*.log
+
+# Not needed at runtime
+tests
+evals
+docs/screenshots
+docs/demo.gif
+scripts/hooks
+screenshots-tmp
+.claude
+.idea
+.vscode

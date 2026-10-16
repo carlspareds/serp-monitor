@@ -1,0 +1,28 @@
+# mkdir -p data && docker compose up -d --build   (README: Run with Docker)
+services:
+  app:
+    build: .
+    image: serp-monitor
+    # Keys from the repo .env, as environment variables (same names as
+    # .env.example). Optional: without it you get the demo mode, sign-in
+    # still required. A variable set here, even blank, wins over the value
+    # Settings saved to data/.env (python-dotenv never overrides the environment).
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # .env.example ships DB_PATH= blank and env_file would pass that on,
+      # overriding the image's default; `environment` wins over env_file.
+      DB_PATH: /data/seo_dashboard.db
+    volumes:
+      # Database, evidence/, exports/ and the .env that Settings writes to.
+      # Create data/ yourself first so it belongs to you: the app runs as
+      # uid 1000 (build arg APP_UID if yours differs) and Docker would
+      # otherwise create it owned by root, which the config check refuses.
+      - ./data:/data
+    # Loopback only: to reach it from other machines put a TLS reverse proxy
+    # in front (README: Deploying behind HTTPS).
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    # The healthcheck (GET /health) is inherited from the Dockerfile.
