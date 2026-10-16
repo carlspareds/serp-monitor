@@ -1,5 +1,20 @@
 # docs/
 
+Reference material that used to live in the main `README.md`. The README
+is now the short guide for installing and using the app; everything else is
+here.
+
+- `features.md`: every feature in detail (searches, classification, alerts,
+  evidence, the optional AI features, reports and the API), the screens
+  and workflow, and the in-app setup and onboarding pages.
+- `configuration.md`: `make check`, the full environment-variable table,
+  going from the demo to real data, accounts and roles.
+- `deployment.md`: running behind an HTTPS reverse proxy (Caddy,
+  `FORCE_HTTPS`, `TRUSTED_PROXIES`, single worker) and the Docker details.
+- `projects-and-subjects.md`: several tracked names or clients per install,
+  roles, scheduled jobs per subject, and the API's `?subject=` rules.
+- `architecture.md`: the `src/` tree, where data goes, the design around
+  uncertainty and human review, project history, data and evals.
 - `ui-architecture.md`: how the server-rendered UI is put together (shell,
   dialogs and side panels, the overlay loader, job status endpoints).
 - `assistant.md`: design of the in-app assistant (tools, confirmation,
