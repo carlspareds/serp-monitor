@@ -10,7 +10,7 @@ Quick summary for operators:
 - Sign-in is required. The first visit asks you to create the admin
   account. `ALLOW_NO_AUTH=1` exists only for a local demo on `127.0.0.1`.
 - Put it behind HTTPS before exposing it (see
-  [Deploying behind HTTPS](README.md#deploying-behind-https)) and set
+  [Deploying behind HTTPS](docs/deployment.md#deploying-behind-https)) and set
   `FORCE_HTTPS=1`.
 - Secrets live in `.env` (mode 0600), never in the database or the UI.
   Set `APP_ENCRYPTION_KEY` to encrypt the few secret-ish values the
