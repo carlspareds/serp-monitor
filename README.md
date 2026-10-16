@@ -158,7 +158,8 @@ Domains in Settings, so bookmarks keep working.
 
 ## Run it
 
-Requires Python 3.12 (the only version CI tests) and `make`.
+Requires Python 3.12 (the only version CI tests) and `make`; or Docker,
+see [Run with Docker](#run-with-docker) below.
 
 ```
 make run
@@ -277,6 +278,24 @@ make secrets  # gitleaks over the working tree and history (needs gitleaks)
 make seed     # seed demo data (no-op if the database already has runs)
 make clean    # remove the virtualenv, the local database, evidence and exports
 ```
+
+### Run with Docker
+
+```
+mkdir -p data && docker compose up -d --build
+```
+
+Same dashboard on `127.0.0.1:8000`, and sign-in is required here too: the
+first visit asks you to create the admin account. `data/` holds the
+database, evidence and exports (the directory `make run` uses as well) and
+the `.env` that Settings and the setup wizard save keys to; variables in
+the repo `.env` are passed to the container and take precedence over it,
+even when left empty. Nothing is seeded:
+`docker compose run --rm app python scripts/seed_demo_data.py` loads the
+demo. The app binds `0.0.0.0` inside the container, so `ALLOW_NO_AUTH` is
+refused; behind a reverse proxy, `TRUSTED_PROXIES` is the address the proxy
+connects from as the container sees it (the Docker bridge gateway, not
+`127.0.0.1`).
 
 ### Deploying behind HTTPS
 
