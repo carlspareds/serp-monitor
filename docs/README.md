@@ -5,6 +5,9 @@
 - `assistant.md`: design of the in-app assistant (tools, confirmation,
   audit, provider handling). `assistant-knowledge.md` is the help text the
   assistant itself reads (`app_help` tool).
+- `adr/`: architecture decision records (SQLite without an ORM, rules
+  plus a human review queue, one process with an embedded scheduler,
+  hosted SERP providers, bring-your-own-key AI, scope).
 - Security: see [`../SECURITY.md`](../SECURITY.md).
 
 Images referenced from the main `README.md`. All of them show the synthetic
