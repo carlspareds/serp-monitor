@@ -239,8 +239,10 @@ def _check_https(env, r: Report) -> None:
 
 
 def _env_file_path(env, cwd: Path) -> Path:
+    """ENV_FILE resolved against cwd, else cwd/.env (== DEFAULT_ENV_FILE when
+    run from the project root; a check run elsewhere never reads the repo's)."""
     raw = _get(env, "ENV_FILE")
-    return _resolve(raw, cwd) if raw else DEFAULT_ENV_FILE
+    return _resolve(raw or ".env", cwd)
 
 
 def _check_env_permissions(env, r: Report, cwd: Path) -> None:

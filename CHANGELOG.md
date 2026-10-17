@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Config check: with `ENV_FILE` unset, the `.env` permission check now
+  inspects `cwd/.env` instead of the repo's `.env`, so `check_config(env,
+  cwd=...)` no longer depends on the developer's real file (#31).
+
 ## [1.0.0] - 2026-10-16
 
 First public release. The code was extracted from a larger private tool,
