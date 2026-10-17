@@ -31,6 +31,8 @@ broken settings are:
 | `RATE_LIMIT_ENABLED` / `RATE_LIMIT_<RULE>` | on, defaults in `SECURITY.md` | — |
 | `BOT_MIN_SUBMIT_SECONDS` | 1 | — |
 | `DB_PATH` | `data/seo_dashboard.db` | its directory can't be created or written, or it is a directory |
+| `BACKUP_DIR` | `backups/` next to the database (`data/backups/`): where the nightly backup and the pre-migration copy go | it can't be created or written |
+| `BACKUP_KEEP_DAYS` | 14: nightly backups older than this are deleted after each run (a `BACKUP_KEEP_DAYS` row in the `settings` table overrides it without a restart) | not a positive integer |
 | `ENV_FILE` | Settings writes to the repo `.env` | it is a directory, or its directory doesn't exist / isn't writable (a missing file is a warning: it is created on first save) |
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | no email | some but not all three are set |
 | `SMTP_PORT` | 465 (SSL; anything else uses STARTTLS) | SMTP is configured and it isn't an integer in 1-65535 |

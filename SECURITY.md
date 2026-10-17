@@ -189,7 +189,10 @@ pages) and a few secret-ish settings.
 of the results: they contain every subject's data, notes and the evidence
 hashes. Store them encrypted (for example `age -r <recipient>` or
 `gpg --symmetric`), never next to `APP_ENCRYPTION_KEY`, and delete old
-copies. `data/evidence/` holds the captured pages themselves.
+copies. The nightly copies the scheduler writes to `data/backups/` (or
+`BACKUP_DIR`) are the same file, unencrypted: they inherit the database's
+disk protection and are rotated after `BACKUP_KEEP_DAYS` (14) days.
+`data/evidence/` holds the captured pages themselves.
 
 **Where.** `src/common/crypto.py`, `src/database/settings.py`
 (`get_setting`, `set_setting`, `encrypt_sensitive_settings`),

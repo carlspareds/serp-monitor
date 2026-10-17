@@ -13,7 +13,9 @@ in the main README; this file is the reference.
   is the weekly report: Monday 08:00 UTC by default (editable in Settings →
   General → Scheduling), Google desktop, the tracked name of every active,
   non-demo subject (see [Projects and subjects](projects-and-subjects.md)). The scheduler
-  also sends a daily info-digest email and runs a weekly purge.
+  also sends a daily info-digest email, runs a weekly purge and writes a
+  nightly backup of the database to `data/backups/` (14 days kept; see
+  [Install and run](../README.md#install-and-run) for the restore script).
 - **Classifies** every result with rules only: your positive-domain list,
   a negative-domain blacklist, and a short negative-keyword list
   (`config/positive_domains.py`). A rule hit gets confidence 1.0; a result

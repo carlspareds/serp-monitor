@@ -12,7 +12,9 @@ A single FastAPI app (`src/dashboard/main.py` + `src/dashboard/routers/`)
 serves a server-rendered HTML dashboard and the JSON API from one process.
 Data lives in one SQLite file, accessed through a hand-written `Database`
 class (`src/database/`) rather than an ORM. An embedded APScheduler runs
-the weekly report, the daily alert check and info digest, retention purges, and an
+the weekly report, the daily alert check and info digest, retention purges,
+a nightly database backup (`VACUUM INTO data/backups/`, 14-day rotation,
+plus a copy before any schema migration), and an
 in-process watchdog that raises a `job_missed` alert when another job
 misses its window. Because it runs inside the same process, it cannot
 tell you the process itself is down.
