@@ -193,6 +193,102 @@ def test_restore_backup_into_a_missing_database_just_copies(tmp_path):
 
 
 # --------------------------------------------------------------------- #
+# nightly_backup job
+# --------------------------------------------------------------------- #
+def test_nightly_backup_job_is_registered_daily_at_0330_utc():
+    from scheduler import core
+    from scheduler import jobs as _jobs  # noqa: F401 -- registers JOBS
+
+    assert "nightly_backup" in core.JOBS
+    assert core.JOBS["nightly_backup"]["default_cron"] == "30 3 * * *"
+    assert callable(core.JOBS["nightly_backup"]["func"])
+
+
+def test_nightly_backup_cron_reads_as_daily_0330(client):
+    from dashboard.integrations import JOB_INFO, describe_cron
+    assert describe_cron("30 3 * * *") == "every day at 03:30 UTC"
+    assert "nightly_backup" in JOB_INFO
+
+
+def test_nightly_backup_job_writes_backup_prunes_and_records_last_backup(tmp_path, monkeypatch):
+    from scheduler.jobs import nightly_backup
+
+    monkeypatch.setenv("BACKUP_DIR", str(tmp_path / "bk"))
+    monkeypatch.delenv("BACKUP_KEEP_DAYS", raising=False)
+    db = _seeded(tmp_path)
+    (tmp_path / "bk").mkdir()
+    stale = tmp_path / "bk" / "t-20260101-033000.db"
+    stale.write_bytes(b"x")
+    _age(stale, 30)
+
+    result = nightly_backup(db)
+
+    out = Path(result["path"])
+    assert out.parent == tmp_path / "bk" and out.exists()
+    assert result["bytes"] == out.stat().st_size > 0
+    assert result["pruned"] == 1 and not stale.exists()
+    last = backup.last_backup(db)
+    assert last["path"] == str(out) and last["bytes"] == out.stat().st_size
+    assert last["at"]  # ISO timestamp the Settings card formats
+    actions = [a["action"] for a in db.list_audit(limit=10)]
+    assert "backup_created" in actions
+
+
+def test_nightly_backup_failure_raises_backup_failed_alert_and_reraises(tmp_path, monkeypatch):
+    from scheduler import jobs
+
+    sent = []
+    monkeypatch.setattr(jobs, "_dispatch_now", lambda db, row: sent.append(row))
+    monkeypatch.setattr(jobs.backup, "create_backup",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    db = _db(tmp_path)
+
+    with pytest.raises(OSError):
+        jobs.nightly_backup(db)
+
+    rows = db.list_alerts(status="open")
+    assert len(rows) == 1 and rows[0]["kind"] == "backup_failed"
+    assert "disk full" in rows[0]["message"]
+    assert sent and sent[0]["kind"] == "backup_failed"  # dispatched directly, like the watchdog
+    assert backup.last_backup(db) is None  # a failed run never counts as a backup
+
+
+def test_nightly_backup_success_auto_resolves_the_open_failure_alert(tmp_path, monkeypatch):
+    from scheduler import jobs
+
+    monkeypatch.setenv("BACKUP_DIR", str(tmp_path / "bk"))
+    monkeypatch.setattr(jobs, "_dispatch_now", lambda db, row: None)
+    db = _db(tmp_path)
+    db.add_alert("backup_failed", "warning", "nightly_backup", "earlier", "backup_failed:nightly_backup")
+
+    jobs.nightly_backup(db)
+
+    assert db.list_alerts(status="open") == []
+
+
+def test_deadman_watchdog_covers_nightly_backup(tmp_path, monkeypatch):
+    """Like every other job, a nightly_backup row that should have fired and
+    didn't raises job_missed -- no special-casing in the watchdog. The grace
+    window is 2x the job's period (2 days for a daily cron), so the row is
+    3 days overdue."""
+    from datetime import UTC, datetime, timedelta
+
+    from scheduler import deadman
+
+    db = _db(tmp_path)
+    monkeypatch.setattr(deadman, "_dispatch_now", lambda *a, **k: None)
+    overdue = (datetime.now(UTC) - timedelta(days=3)).replace(tzinfo=None).isoformat()
+    conn = sqlite3.connect(db.db_path)
+    conn.execute("INSERT INTO scheduled_jobs (name, cron_expr, enabled, next_run_at) "
+                 "VALUES ('nightly_backup', '30 3 * * *', 1, ?)", (overdue,))
+    conn.commit()
+    conn.close()
+
+    assert deadman.check(db)["new"] == 1
+    assert db.list_alerts(status="open")[0]["country"] == "nightly_backup"
+
+
+# --------------------------------------------------------------------- #
 # Automatic backup before migrations (PRAGMA user_version)
 # --------------------------------------------------------------------- #
 def test_fresh_database_takes_no_pre_migration_backup(tmp_path, monkeypatch):
@@ -222,6 +318,21 @@ def test_existing_database_behind_schema_version_is_backed_up_once(tmp_path, mon
 
     Database(db_path=db.db_path)  # second start: already at SCHEMA_VERSION, no new copy
     assert len(list((tmp_path / "backups").glob("*.db"))) == 1
+
+
+# --------------------------------------------------------------------- #
+# Settings -> Backup card
+# --------------------------------------------------------------------- #
+def test_backup_card_shows_last_nightly_backup_or_none_yet(client, seeded_db):
+    card = client.get("/settings").text.split("<section id='backup'")[1]
+    assert "Last nightly backup: none yet" in card
+    assert "data/backups/" in card
+
+    seeded_db.set_setting(backup.LAST_BACKUP_AT, "2026-10-16T03:30:04")
+    seeded_db.set_setting(backup.LAST_BACKUP_BYTES, str(3 * 1024 * 1024))
+    seeded_db.set_setting(backup.LAST_BACKUP_PATH, "/srv/data/backups/seo_dashboard-20261016-033004.db")
+    card = client.get("/settings").text.split("<section id='backup'")[1]
+    assert "Last nightly backup: 2026-10-16 03:30 UTC (3.0 MB)" in card
 
 
 # --------------------------------------------------------------------- #

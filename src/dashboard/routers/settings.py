@@ -59,6 +59,7 @@ from dashboard.ui_helpers import (
     page,
     plural,
 )
+from database import backup as db_backup
 from database.models import (
     API_KEY_SCOPE_DEFAULT,
     API_KEY_SCOPES,
@@ -532,13 +533,30 @@ _BACKUP_CARD = """
           description, label, same-person check and date. Opens in Excel or Google Sheets.</p></div>
           <a class='btn small' href='/backup/csv' download>Export .csv</a></div>
       </div>
+      <p class='note'>The scheduler also writes a copy of the database {when} to
+      <code>data/backups/</code> (or <code>BACKUP_DIR</code>) and keeps {keep_days} days of them.
+      To restore one, stop the server and run
+      <code>scripts/restore_backup.py data/backups/&lt;file&gt;.db --yes</code>.
+      {last_line}</p>
     </div>"""
+
+
+def _last_backup_line() -> str:
+    last = db_backup.last_backup(db)
+    if not last:
+        return "Last nightly backup: none yet."
+    return (f"Last nightly backup: {_esc(_fmt_utc(last['at']))} "
+            f"({_esc(db_backup.format_bytes(last['bytes']))}).")
 
 
 def _backup_card() -> str:
     head = integ.section_head("Backup", "Download a copy of your data. Keep it somewhere safe: "
                                         "the full backup contains everything.")
-    return _BACKUP_CARD.format(head=head)
+    row = db.get_scheduled_job("nightly_backup")
+    cron = ((row or {}).get("cron_expr")
+            or scheduler_core.JOBS.get("nightly_backup", {}).get("default_cron", "30 3 * * *"))
+    return _BACKUP_CARD.format(head=head, when=_esc(integ.describe_cron(cron)),
+                               keep_days=db_backup.keep_days(db), last_line=_last_backup_line())
 
 
 def _overview(v) -> str:

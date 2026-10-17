@@ -935,6 +935,8 @@ JOB_INFO: dict[str, tuple[str, str]] = {
     "info_digest": ("Daily digest", ("emails one summary of the day's info alerts, a section "
                                      "per subject")),
     "purge_checks": ("Clean-up", "removes old delivery logs, resolved alerts and old evidence"),
+    "nightly_backup": ("Nightly backup", ("writes a copy of the database to data/backups/ and "
+                                          "removes copies older than 14 days")),
     "deadman_check": ("Watchdog", ("checks that the other jobs ran, and raises an alert if "
                                    "one was missed")),
 }
@@ -944,19 +946,22 @@ _DAYS = {0: "Sunday", 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 
 
 
 def parse_cron(expr: str) -> dict | None:
-    """{frequency, hour, weekday} for the expressions admin.build_cron_expr
-    writes, else None."""
+    """{frequency, hour, minute, weekday} for the expressions admin.build_cron_expr
+    writes (minute 0) and for a fixed minute like the nightly backup's
+    "30 3 * * *", else None."""
     parts = (expr or "").split()
-    if len(parts) != 5 or parts[0] != "0" or not parts[1].isdigit():
+    if len(parts) != 5 or not parts[0].isdigit() or not parts[1].isdigit():
         return None
-    hour = int(parts[1])
+    minute, hour = int(parts[0]), int(parts[1])
     dom, mon, dow = parts[2], parts[3], parts[4]
     table = {("*", "*"): "daily", ("1", "*"): "monthly", ("1", "1,4,7,10"): "quarterly",
              ("1", "1,7"): "biannual", ("1", "1"): "annual"}
     if dom == "*" and mon == "*" and dow.isdigit():
-        return {"frequency": "weekly", "hour": hour, "weekday": int(dow) % 7}
+        return {"frequency": "weekly", "hour": hour, "minute": minute, "weekday": int(dow) % 7}
     freq = table.get((dom, mon)) if dow == "*" else None
-    return {"frequency": freq, "hour": hour, "weekday": admin.DEFAULT_WEEKDAY} if freq else None
+    if not freq:
+        return None
+    return {"frequency": freq, "hour": hour, "minute": minute, "weekday": admin.DEFAULT_WEEKDAY}
 
 
 def describe_cron(expr: str) -> str:
@@ -966,7 +971,7 @@ def describe_cron(expr: str) -> str:
     p = parse_cron(expr)
     if not p:
         return f"on the schedule {expr} (UTC)"
-    at = f"at {p['hour']:02d}:00 UTC"
+    at = f"at {p['hour']:02d}:{p.get('minute', 0):02d} UTC"
     return {
         "daily": f"every day {at}",
         "weekly": f"every {_DAYS.get(p['weekday'], 'Monday')} {at}",
