@@ -1,5 +1,6 @@
 """Database schema migrations, indexes, FTS backfills, and seed routines."""
 import json
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -29,6 +30,17 @@ from database.schema import (
     _URL_NOTES_COLUMNS,
     _URL_NOTES_DDL,
 )
+
+# Schema version stamped into `PRAGMA user_version` at the end of
+# SchemaMixin._init_db. Bump it whenever a migration below changes the schema
+# (new column/table/index, a PK rebuild, a backfill that rewrites rows): a
+# database behind this number gets a `<stem>-<ts>-pre-migration.db` copy
+# (database.backup, in BACKUP_DIR or data/backups/) BEFORE any _ensure_* runs.
+# A fresh file (no tables yet) is never backed up. Databases created before
+# this constant existed read 0 and get one copy on their first start.
+SCHEMA_VERSION = 1
+
+_log = logging.getLogger("migrations")
 
 # Legacy single-subject settings keys. Until phase 2 moves every router to the subject
 # row, these keys and subject 1's row are kept in sync in BOTH directions (see
@@ -160,6 +172,25 @@ def insert_lifecycle_rows(cur, agg: dict[tuple, dict]) -> int:
 
 class MigrationsMixin:
     """Incremental column migrations, FTS indexing, and tenancy backfills."""
+
+    def _backup_before_migration(self, cur) -> None:
+        """Pre-migration safety copy (hardening #6): if the file already has
+        tables and its user_version is behind SCHEMA_VERSION, write a
+        `-pre-migration` backup before the _ensure_* chain touches anything.
+        A failure here is deliberately fatal: migrating without a copy on a
+        disk that cannot hold one is the exact risk this exists to remove
+        (`make check` validates BACKUP_DIR beforehand)."""
+        if cur.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+            return
+        if cur.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").fetchone() is None:
+            return  # brand-new database: nothing to protect yet
+        from database.backup import pre_migration_backup  # stdlib-only module, no cycle
+        path = pre_migration_backup(self.db_path)
+        _log.info("pre_migration_backup", extra={"path": str(path), "schema_version": SCHEMA_VERSION})
+
+    @staticmethod
+    def _stamp_schema_version(cur) -> None:
+        cur.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
 
     def _ensure_subject_id(self, cur):
         for table in self._SUBJECT_TABLES:
