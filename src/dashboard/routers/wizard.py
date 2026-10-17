@@ -21,7 +21,6 @@ required (SECURITY.md, item 6), so it can't be skipped -- on a normal
 install it is already done before the wizard opens (/setup/admin creates
 the first admin), and it only shows up under the ALLOW_NO_AUTH demo opt-out.
 """
-import os
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -92,7 +91,10 @@ def _integrations_configured() -> dict[str, bool]:
 def _step_configured(step: str) -> bool:
     """The step's config really exists (as opposed to being skipped)."""
     if step == "apify":
-        return bool(os.getenv("APIFY_API_KEY"))
+        # Step "apify" (name kept for stored wizard_skipped_* rows): any SERP
+        # provider key, Apify or Serper.dev (serp.registry).
+        from serp.registry import active_provider_name
+        return bool(active_provider_name())
     if step == "integrations":
         return (db.get_setting("wizard_saved_integrations", "") == "1"
                 or any(_integrations_configured().values()))
@@ -180,21 +182,23 @@ _INTEGRATIONS_NEXT = "/setup?step=integrations"
 
 
 def _summary_html() -> str:
-    """Final page. Says plainly what is still missing -- skipping the Apify
-    step must not end on "all set" while the instance is still in demo mode.
-    Same integration rows (and dialogs) as Settings."""
+    """Final page. Says plainly what is still missing -- skipping the search
+    provider step must not end on "all set" while the instance is still in
+    demo mode. Same integration rows (and dialogs) as Settings."""
     apify_card = ""
-    if not os.getenv("APIFY_API_KEY"):
+    if not _step_configured("apify"):
         until = ("Until then the dashboard shows the demo data only." if _demo_data_exists()
                  else "Until then, searches can't run.")
         apify_card = (
             "<div class='hint' id='apify-missing'>"
-            f"<b>Apify key not set. Add it to run real searches.</b> {until}</div>"
+            f"<b>Search provider key not set (Apify or Serper.dev). Add one to run real "
+            f"searches.</b> {until}</div>"
             + _apify_form("/setup")
         )
     rows = "".join(integ.integration_row(n, "/setup", show_purpose=False)
                    for n in ("ai", *integ.CHANNELS))
-    title = "Setup complete" if os.getenv("APIFY_API_KEY") else "Setup complete (no Apify key yet)"
+    title = ("Setup complete" if _step_configured("apify")
+             else "Setup complete (no search provider key yet)")
     return (
         f"<h2>{title}</h2>{apify_card}"
         f"<p class='muted'>Optional integrations. {ROUTING_NOTE}</p>"
@@ -204,16 +208,18 @@ def _summary_html() -> str:
 
 
 def _apify_form(next_url: str, skip_label: str = "") -> str:
-    """Step 1: the SAME Apify row and guided dialog as Settings → Search
-    (/ui/integration/apify, saved by /settings/apikey with next=/setup) -- no
-    second copy of the form. Only the wizard's Skip lives here. POST
-    /setup/apify still accepts a key from older bookmarks/scripts."""
+    """Step 1: the SAME provider rows and guided dialogs as Settings → Search
+    (/ui/integration/apify and /ui/integration/serper, saved by
+    /settings/apikey and /settings/serper-key with next=/setup) -- no second
+    copy of the forms. Only the wizard's Skip lives here. POST /setup/apify
+    still accepts an Apify key from older bookmarks/scripts."""
     skip = ("<form method='post' action='/setup/apify?skip=1' class='actions-row'>"
             f"<button type='submit' class='btn ghost'>{_esc(skip_label)}</button></form>"
             if skip_label else "")
-    return (f"<div class='integ-list'>{integ.integration_row('apify', next_url)}</div>"
-            "<p class='muted'>Set up opens a short guided dialog: get the token, paste it, "
-            f"test it and save. The wizard moves on once it's saved.</p>{skip}")
+    rows = "".join(integ.integration_row(n, next_url) for n in integ.SERP_PROVIDERS)
+    return (f"<div class='integ-list'>{rows}</div>"
+            "<p class='muted'>Either provider is enough. Set up opens a short guided dialog: get "
+            f"the key, paste it, test it and save. The wizard moves on once one is saved.</p>{skip}")
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -237,9 +243,10 @@ async def setup(request: Request, error: str = "", notice: str = ""):
             "<h2>1. Welcome to SERP Monitor</h2>"
             "<p class='muted'>This tool tracks how a name or business ranks in Google and Bing "
             "search results over time, and alerts you when something negative appears. "
-            f"It needs an Apify account to run real searches. {without}</p>"
+            "It needs a SERP provider account (Apify, or Serper.dev for Google only) to run "
+            f"real searches. {without}</p>"
             f"{err_html}{_apify_form('/setup', skip_label)}",
-            "Setup · Apify",
+            "Setup · Search provider",
             step=step,
         )
 

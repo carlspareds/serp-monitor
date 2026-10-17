@@ -110,6 +110,20 @@ async def _test_apify(request, form):
     return ok, msg, (key,)
 
 
+async def _test_serper(request, form):
+    from serp.serper_provider import SerperProvider
+    key = _typed(form, "serper_key", "SERPER_API_KEY")
+    if not key:
+        return False, "Paste your Serper.dev key first.", ()
+    ok, detail = await run_in_threadpool(SerperProvider(api_key=key).check_credentials)
+    msg = (f"Serper.dev accepted the key ({detail})." if ok
+           else f"{detail}. Copy the key again and retry.")
+    integration_health.record(db, "serper", integration_health.ident_for("serper", {"SERPER_API_KEY": key}),
+                              ok, msg, (key,))
+    _audit_test(request, "settings_serper_test", ok, msg, (key,))
+    return ok, msg, (key,)
+
+
 def _ai_ping(values: dict) -> tuple[bool, str]:
     with llm.config_override(values), llm.session_scope():
         return ai_classifier._call_llm("Reply with only: ok", max_tokens=llm.SHORT_OUTPUT_TOKENS)
@@ -226,7 +240,7 @@ async def _test_ntfy(request, form):
     return ok, detail, secrets
 
 
-_TESTS = {"apify": _test_apify, "ai": _test_ai, "email": _test_email, "telegram": _test_telegram,
+_TESTS = {"apify": _test_apify, "serper": _test_serper, "ai": _test_ai, "email": _test_email, "telegram": _test_telegram,
           "slack": _test_slack, "ntfy": _test_ntfy}
 
 
@@ -299,7 +313,7 @@ async def remove_secret(request: Request):
     integ.write_env(pairs)
     if info.get("chat_id"):
         db.set_setting("telegram_chat_id", "")
-    if key == "APIFY_API_KEY":
+    if key in ("APIFY_API_KEY", "SERPER_API_KEY"):
         import dashboard.main as main_module
         main_module._runner = None
     audit(request, "settings_secret_remove", field=key, cleared=",".join(k for k, _v in pairs))

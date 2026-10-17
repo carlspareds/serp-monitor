@@ -26,6 +26,9 @@ import html
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Name kept (tests patch report.weekly.ApifyRunner): it is serp.runner.SerpRunner
+# over the ACTIVE provider, not necessarily Apify.
+from apify.runner import ApifyRunner
 from config.positive_domains import merged_with
 from database.base import subject_scope
 from database.models import DEFAULT_SUBJECT_COUNTRIES, DEFAULT_SUBJECT_QUERY, Database
@@ -34,7 +37,6 @@ from notify import email_sender
 from processing import alerts as alerts_engine
 from processing.diff import run_diff
 from report.multi_country import aggregate_summary, run_multi_country
-from serp.runner import SerpRunner
 
 project_root = Path(__file__).parent.parent.parent
 
@@ -146,7 +148,7 @@ def run(db=None, query=None, countries=None, pages: int = 1, runner=None) -> dic
     `query` to the subject's tracked query."""
     if db is None:
         db = Database(db_path=str(project_root / "data" / "seo_dashboard.db"))
-    runner = runner or SerpRunner()
+    runner = runner or ApifyRunner()
     subject = db.current_subject()
     label = db.subject_label()
 

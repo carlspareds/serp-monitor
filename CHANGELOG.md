@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pluggable SERP providers (`src/serp/`, issue #3 part 1): a
+  `SerpProvider` contract with two adapters, Apify (the existing actors)
+  and Serper.dev (Google desktop, `SERPER_API_KEY`). Settings → Search gets
+  a Serper.dev row, a Provider card (`SERP_PROVIDER`: Auto / Apify /
+  Serper.dev) and the setup wizard accepts either key. `SERPER_USD_PER_1K`
+  turns Serper credits into the estimated spend shown in the budget card.
+- `runs.provider` column (default `apify` for existing rows) and
+  `Database.serp_month_cost()` with a per-provider breakdown.
+- The SERP-parsing eval also runs over a synthetic Serper.dev payload
+  (`evals/fixtures/serper_google_us.json`).
+
+### Changed
+
+- The monthly budget and its alert count every provider; the alert kind
+  stays `apify_budget` (stored rows) but reads "SERP monthly spend", and
+  the Settings field is "Monthly SERP budget". Demo mode now means "no
+  provider key at all"; `make check` reports the active provider and warns
+  when `SERP_PROVIDER` names a provider without its key.
+- `ApifyRunner` is `serp.runner.SerpRunner` over the active provider;
+  `apify.runner.ApifyRunner`, `apify.actors.CONFIGURED_ENGINES` /
+  `VALID_DEVICES` and `Database.apify_month_cost` remain as aliases.
+  The "engine not configured" message now names the provider.
+
 ## [1.0.0] - 2026-10-16
 
 First public release. The code was extracted from a larger private tool,

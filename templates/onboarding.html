@@ -85,7 +85,7 @@
         </p>
         <div style="margin-bottom: 18px;">
           <span class="pill {% if has_apify %}ok{% else %}warning{% endif %}">
-            {% if has_apify %}Apify Key Connected{% else %}Apify Key Needed{% endif %}
+            {% if has_apify %}Search Provider Connected{% else %}Search Key Needed{% endif %}
           </span>
         </div>
         <a href="/setup?step=apify" class="btn-link btn-sm" style="display:inline-block;">Configure Scraper Key →</a>
@@ -131,12 +131,12 @@
       <div class="checklist-item">
         <div class="checklist-icon" style="color:var(--muted)">{{ page_icon('search', 20) }}</div>
         <div class="checklist-content" style="flex:1;">
-          <h4>Search Engine Scraper (Apify)</h4>
+          <h4>Search Engine Scraper (Apify or Serper.dev)</h4>
           <p>
             {% if has_apify %}
-            Apify key set: searches run through Apify's Google and Bing actors.
+            Provider key set: searches run through your SERP provider (Settings → Search).
             {% else %}
-            Demo mode: no Apify key, so real searches will fail. Add one in <a href="/setup?step=apify">Setup</a> (Apify has a free tier).
+            Demo mode: no provider key, so real searches will fail. Add one in <a href="/setup?step=apify">Setup</a> (both have a free tier).
             {% endif %}
           </p>
         </div>

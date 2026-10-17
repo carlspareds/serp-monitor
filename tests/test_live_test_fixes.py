@@ -498,12 +498,11 @@ def test_test_buttons_write_audit_entries(client, seeded_db, monkeypatch):
 
     import dashboard.routers.settings as settings_module
 
-    class _Client:
-        def check_account(self):
-            return {"ok": True, "username": "me"}
-
     class _Runner:
-        client = _Client()
+        provider_name = "apify"
+
+        def check_credentials(self):
+            return True, "connected (user: me)"
 
     monkeypatch.setattr(settings_module, "_get_runner", lambda: _Runner())
     client.post("/settings/apify-test")

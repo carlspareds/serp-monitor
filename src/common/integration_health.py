@@ -32,6 +32,7 @@ _log = logging.getLogger("integrations")
 # id setting). Order matters for the fingerprint.
 ENV_KEYS: dict[str, tuple[str, ...]] = {
     "apify": ("APIFY_API_KEY",),
+    "serper": ("SERPER_API_KEY",),
     "email": ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM", "ALERT_EMAIL"),
     "telegram": ("TELEGRAM_BOT_TOKEN",),
     "slack": ("SLACK_WEBHOOK_URL",),

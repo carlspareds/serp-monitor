@@ -45,7 +45,7 @@ def _errors(report) -> set[str]:
 def test_demo_no_keys_passes_with_warnings(tmp_path):
     report = cc.check_config(_demo_env(tmp_path), cwd=tmp_path)
     assert report.ok and not report.errors
-    assert [f.key for f in report.warnings] == ["APIFY_API_KEY"]
+    assert [f.key for f in report.warnings] == ["SERP provider"]
     assert "Demo mode" in report.warnings[0].message
 
 
@@ -264,7 +264,7 @@ def _run_cli(tmp_path, **overrides) -> subprocess.CompletedProcess:
 def test_cli_demo_exit_0(tmp_path):
     proc = _run_cli(tmp_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "[WARN ] APIFY_API_KEY" in proc.stdout
+    assert "[WARN ] SERP provider" in proc.stdout
     assert "0 error(s)" in proc.stdout
 
 
@@ -331,7 +331,7 @@ def test_ai_provider_valid_setups_have_no_ai_warning(tmp_path, extra):
     env = _demo_env(tmp_path)
     env.update(extra)
     report = cc.check_config(env, cwd=tmp_path)
-    assert [f.key for f in report.warnings] == ["APIFY_API_KEY"]
+    assert [f.key for f in report.warnings] == ["SERP provider"]
     assert "AI provider" in {f.key for f in report.of(cc.OK)}
 
 

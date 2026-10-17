@@ -417,7 +417,7 @@ def _finish_with_apify_skipped(client):
 def test_summary_flags_missing_apify_key(fresh_client):
     _finish_with_apify_skipped(fresh_client)
     text = fresh_client.get("/setup").text
-    assert "Apify key not set" in text
+    assert "Search provider key not set" in text
     assert "/ui/integration/apify?next=/setup" in text     # the Settings dialog, not a copy
     assert "all set" not in text
 
@@ -428,5 +428,5 @@ def test_summary_without_the_apify_card_once_the_key_is_set(fresh_client, monkey
     _finish_with_apify_skipped(fresh_client)
     fresh_client.post("/setup/apify", data={"apikey": "real-key"})
     text = fresh_client.get("/setup").text
-    assert "Apify key not set" not in text
+    assert "Search provider key not set" not in text
     assert "Setup complete" in text

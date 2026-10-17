@@ -37,12 +37,19 @@ from dashboard.ui_helpers import _env_file, _esc, fmt_day
 from notify import channel_status, email_sender
 from processing import ai_status, llm
 
-NAMES = ("apify", "ai", "email", "telegram", "slack", "ntfy")
+NAMES = ("apify", "serper", "ai", "email", "telegram", "slack", "ntfy")
 CHANNELS = ("email", "telegram", "slack", "ntfy")
+# SERP providers (issue #3): one integration row each; which one searches
+# run through is serp.registry (Settings → Search → Provider).
+SERP_PROVIDERS = ("apify", "serper")
 
 INFO: dict[str, dict] = {
     "apify": {"title": "Search (Apify)", "short": "Apify",
-              "purpose": "Runs the Google and Bing searches. Needed for real results."},
+              "purpose": "Runs Google (desktop and mobile) and Bing searches through Apify's "
+                         "hosted actors. One SERP provider is needed for real results."},
+    "serper": {"title": "Search (Serper.dev)", "short": "Serper.dev",
+               "purpose": "Runs Google (desktop) searches through the Serper.dev API: fast, "
+                          "prepaid credits. An alternative to Apify."},
     "ai": {"title": "AI provider", "short": "AI provider",
            "purpose": "Spots people with the same name and scores how harmful a result is. "
                       "Optional: without it, simple rules label the results."},
@@ -56,7 +63,7 @@ INFO: dict[str, dict] = {
              "purpose": "Push notifications on your phone with the free ntfy app."},
 }
 
-SECTION_OF = {"apify": "search", "ai": "ai", "email": "notifications", "telegram": "notifications",
+SECTION_OF = {"apify": "search", "serper": "search", "ai": "ai", "email": "notifications", "telegram": "notifications",
               "slack": "notifications", "ntfy": "notifications"}
 
 PROVIDER_LABELS = {"gemini": "Gemini", "openai": "OpenAI-compatible"}
@@ -115,7 +122,12 @@ EMAIL_PRESETS: dict[str, dict] = {
 # go together when the integration can't work without the secret).
 REMOVABLE: dict[str, dict] = {
     "APIFY_API_KEY": {"label": "the Apify token", "clears": ("APIFY_API_KEY",), "section": "search",
-                      "effect": "Searches stop until you add a token again."},
+                      "effect": "Searches stop until you add a token again (unless another "
+                                "provider is set up)."},
+    "SERPER_API_KEY": {"label": "the Serper.dev key", "clears": ("SERPER_API_KEY",),
+                       "section": "search",
+                       "effect": "Searches stop until you add a key again (unless another "
+                                 "provider is set up)."},
     "GEMINI_API_KEY": {"label": "the Gemini API key", "clears": ("GEMINI_API_KEY",), "section": "ai",
                        "effect": "AI checks stop while Gemini is the provider."},
     "OPENAI_API_KEY": {"label": "the API key", "clears": ("OPENAI_API_KEY",), "section": "ai",
@@ -324,8 +336,22 @@ def working_text(at: str) -> str:
     return f"Working · tested {when}" if when else "Working"
 
 
+def _provider_summary(name: str) -> str:
+    """Row summary of a SERP provider: saved or not, and whether searches
+    run through it right now (serp.registry)."""
+    from serp.registry import active_provider_name, requested_provider
+    saved = secret_saved("APIFY_API_KEY" if name == "apify" else "SERPER_API_KEY")
+    if not saved:
+        if active_provider_name():
+            return "Not set up (searches run through the other provider)."
+        return "No key yet: searches can't run."
+    if active_provider_name() == name:
+        return "Key saved · searches run through it" + ("" if requested_provider() else " (auto)") + "."
+    return "Key saved, but not the active provider (see Provider below)."
+
+
 def _apify_summary() -> str:
-    return "Token saved." if secret_saved("APIFY_API_KEY") else "No token yet: searches can't run."
+    return _provider_summary("apify")
 
 
 def ai_summary() -> str:
@@ -373,6 +399,8 @@ def _ntfy_summary() -> str:
 def configured(name: str) -> bool:
     if name == "apify":
         return secret_saved("APIFY_API_KEY")
+    if name == "serper":
+        return secret_saved("SERPER_API_KEY")
     if name == "ai":
         return llm.is_configured()
     return bool(channel_status(db).get(name))
@@ -396,7 +424,8 @@ def _incomplete(name: str) -> str:
 
 def integration_state(name: str) -> dict:
     """{state: ok|fail|warn|neutral, label, reason, configured, summary}."""
-    summaries = {"apify": _apify_summary, "ai": ai_summary, "email": _email_summary,
+    summaries = {"apify": _apify_summary, "serper": lambda: _provider_summary("serper"),
+                 "ai": ai_summary, "email": _email_summary,
                  "telegram": _telegram_summary,
                  "slack": lambda: "Webhook saved." if secret_saved("SLACK_WEBHOOK_URL") else "",
                  "ntfy": _ntfy_summary}
@@ -405,8 +434,13 @@ def integration_state(name: str) -> dict:
         incomplete = _incomplete(name)
         if incomplete:
             out.update(state="warn", label="Incomplete", reason=incomplete)
-        elif name == "apify":
-            out.update(state="warn", label="Not set up")
+        elif name in SERP_PROVIDERS:
+            # Only one SERP provider is needed: the other one is optional.
+            from serp.registry import active_provider_name
+            if active_provider_name():
+                out.update(state="neutral", label="Optional")
+            else:
+                out.update(state="warn", label="Not set up")
         else:
             out.update(state="neutral", label="Optional")
         return out
@@ -438,7 +472,7 @@ def modal_url(name: str, next_url: str, **params) -> str:
 
 def setup_button(name: str, next_url: str, st: dict | None = None, primary: bool | None = None) -> str:
     st = st or integration_state(name)
-    is_set = st["configured"] or (st["state"] == "warn" and name != "apify")
+    is_set = st["configured"] or (st["state"] == "warn" and name not in SERP_PROVIDERS)
     label = "Change" if is_set else "Set up"
     primary = (not is_set) if primary is None else primary
     cls = "btn primary small" if primary else "btn small"
@@ -451,8 +485,9 @@ def saved_test_button(name: str, next_url: str) -> str:
     """Test of the SAVED configuration (the row's quick check)."""
     if name == "ai":
         action, hidden = "/settings/ai-test", ""
-    elif name == "apify":
-        action, hidden = "/settings/apify-test", ""
+    elif name in SERP_PROVIDERS:
+        # One route for every SERP provider: tests THIS provider's saved key.
+        action, hidden = "/settings/serp-test", f"<input type='hidden' name='provider' value='{name}'>"
     elif name == "email":
         action, hidden = "/settings/email-test", ""
     else:
@@ -647,6 +682,35 @@ def _apify_modal(next_url: str, error: str = "", values: dict | None = None) -> 
             + "<p class='note'>The monthly budget alert is set in Settings → Search, next to this.</p>")
     title = "Change the Apify token" if st["configured"] else "Set up Search (Apify)"
     return title, body, _foot("apify", "f-apify")
+
+
+def _serper_modal(next_url: str, error: str = "", values: dict | None = None) -> tuple[str, str, str]:
+    from serp.serper_provider import usd_per_1k_setting
+    st = integration_state("serper")
+    rate = (values or {}).get("usd_per_1k") or f"{usd_per_1k_setting():g}"
+    body = (stepper(["Get your key", "Paste it", "Test and save"], 2 if st["configured"] else 1)
+            + _error_box(error)
+            + _form_open("f-serper", "/settings/serper-key", next_url)
+            + step_block(1, "Get your Serper.dev key",
+                         "<p class='note'>Sign up at "
+                         f"{ext_link('https://serper.dev', 'serper.dev')} (2,500 free credits, "
+                         "no card) and copy the API key from the dashboard.</p>")
+            + step_block(2, "Paste it here", secret_field(
+                "SERPER_API_KEY", "serper_key", "Serper.dev API key", "sp-key",
+                "A long hex string from the Serper.dev dashboard.", "", autofocus=True)
+                + field("Price per 1,000 credits (USD)",
+                        text_input("sp-rate", "usd_per_1k", rate, "1.00"),
+                        "Your pack's rate: 1.00 on the Starter pack, down to 0.30. Used only to "
+                        "ESTIMATE the spend shown in the budget card (Serper bills credits, not "
+                        "dollars). A search of up to 10 results is 1 credit.", "sp-rate"))
+            + step_block(3, "Test, then save",
+                         "<p class='note'>Test runs one tiny search (1 credit, about a tenth of "
+                         "a cent): Serper.dev has no free account check.</p>" + test_slot("serper"))
+            + "</form>" + remove_form("SERPER_API_KEY", next_url)
+            + "<p class='note'>Serper.dev searches Google on desktop only; pick the provider in "
+              "Settings → Search, next to this.</p>")
+    title = "Change the Serper.dev key" if st["configured"] else "Set up Search (Serper.dev)"
+    return title, body, _foot("serper", "f-serper")
 
 
 def _ai_choose(next_url: str, error: str = "") -> tuple[str, str, str]:
@@ -902,6 +966,8 @@ def modal_parts(name: str, next_url: str, *, step: str = "", provider: str = "",
     """(title, body, foot) of the guided dialog of `name`."""
     if name == "apify":
         return _apify_modal(next_url, error, values)
+    if name == "serper":
+        return _serper_modal(next_url, error, values)
     if name == "ai":
         # Always starts at "Choose a provider" (the one in use is marked).
         chosen = provider if provider in llm.PROVIDERS else ""

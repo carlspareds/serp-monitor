@@ -65,20 +65,22 @@ The point is a plausible, inspectable demo, not statistical realism.
 
 ## How real data flows
 
-With a real `APIFY_API_KEY` in `.env`, a search launches an Apify actor
-(`apify~google-search-scraper` or `tri_angle~bing-search-scraper`). Searches
+With a real provider key in `.env` (`APIFY_API_KEY`, or `SERPER_API_KEY`
+for Serper.dev), a search goes to that provider: an Apify actor
+(`apify~google-search-scraper` or `tri_angle~bing-search-scraper`) or one
+Serper.dev request per page (`src/serp/`). Searches
 run on demand from Results → New search (`/search_page`), plus one
 scheduled search: the weekly report (Monday 08:00 UTC by default, editable
 in Settings → General → Scheduling; Google desktop, the tracked name). The
 daily 09:00 UTC job only re-checks alert rules against data already
-stored; a daily info-digest email and a weekly purge also run. `src/apify/`
-normalizes the actor output, `src/processing/classifier.py` labels each
+stored; a daily info-digest email and a weekly purge also run. The provider
+adapter normalizes the raw output, `src/processing/classifier.py` labels each
 result with rules (domain lists and keywords), and the `Database` class
 saves it to the SQLite file at `DB_PATH`.
 
 Data leaves the machine in these cases:
 
-- **Apify**: every search (query, country, engine).
+- **The SERP provider** (Apify or Serper.dev, whichever is active): every search (query, country, engine).
 - **The AI provider**, only if one is set (Gemini or any OpenAI-compatible
   API, see `LLM_PROVIDER` in `.env.example`): result titles, URLs, and
   snippets, for same-name detection, severity scoring, the manual

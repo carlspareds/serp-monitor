@@ -51,6 +51,9 @@ OK, INFO, WARN, ERROR = "OK", "INFO", "WARN", "ERROR"
 # secret=True -> its value is never shown (and is also scrubbed from output).
 ENV_VARS: dict[str, bool] = {
     "APIFY_API_KEY": True,
+    "SERPER_API_KEY": True,
+    "SERP_PROVIDER": False,
+    "SERPER_USD_PER_1K": False,
     "AUTH_USER": False,
     "AUTH_PASS": True,
     "DB_PATH": False,
@@ -316,12 +319,40 @@ def _check_env_file(env, r: Report, cwd: Path) -> None:
               "first save from Settings/setup")
 
 
-def _check_apify(env, r: Report) -> None:
-    if _get(env, "APIFY_API_KEY"):
-        r.add(OK, "APIFY_API_KEY", "set (real searches enabled)")
+# Same selection as serp.registry (kept in sync by tests/test_serp_provider.py).
+_SERP_PROVIDERS = {"apify": "APIFY_API_KEY", "serper": "SERPER_API_KEY"}
+_SERP_LABELS = {"apify": "Apify", "serper": "Serper.dev"}
+
+
+def _check_serp(env, r: Report) -> None:
+    """SERP provider (serp.registry): real searches need an Apify or a
+    Serper.dev key; SERP_PROVIDER picks one explicitly (no fallback when
+    its key is missing, like LLM_PROVIDER), empty is auto."""
+    keys = {name: _get(env, var) for name, var in _SERP_PROVIDERS.items()}
+    chosen = _get(env, "SERP_PROVIDER").lower()
+    if chosen and chosen not in _SERP_PROVIDERS:
+        r.add(WARN, "SERP_PROVIDER", f"unknown provider {chosen[:40]!r}: auto-detect is used",
+              "use 'apify' or 'serper', or leave it empty for auto")
+        chosen = ""
+    if chosen and not keys[chosen]:
+        r.add(WARN, "SERP_PROVIDER", f"={chosen} but {_SERP_PROVIDERS[chosen]} is not set: "
+              "searches are disabled", f"set {_SERP_PROVIDERS[chosen]}, or switch SERP_PROVIDER")
     else:
-        r.add(WARN, "APIFY_API_KEY", "Demo mode: no APIFY_API_KEY, so searches are disabled, "
-              "synthetic data only", "add the key in /setup or .env for real searches")
+        active = chosen or next((n for n in _SERP_PROVIDERS if keys[n]), "")
+        if active:
+            r.add(OK, "SERP provider", f"{_SERP_LABELS[active]} (real searches enabled)")
+        else:
+            r.add(WARN, "SERP provider", "Demo mode: neither APIFY_API_KEY nor SERPER_API_KEY "
+                  "is set, so searches are disabled, synthetic data only",
+                  "add one of them in /setup or .env for real searches")
+    rate = _get(env, "SERPER_USD_PER_1K")
+    if rate:
+        try:
+            if float(rate) < 0:
+                raise ValueError
+        except ValueError:
+            r.add(WARN, "SERPER_USD_PER_1K", f"{rate[:20]!r} is not a number >= 0: the default "
+                  "1.00 USD per 1,000 credits is used", "use your Serper.dev pack's rate, e.g. 0.75")
 
 
 _OFFICIAL_OPENAI_HOST = "api.openai.com"   # processing.llm._OFFICIAL_OPENAI_HOST
@@ -482,7 +513,7 @@ def check_config(env: Mapping[str, str] | None = None, cwd: Path | None = None) 
     _check_env_file(env, r, cwd)
     _check_env_permissions(env, r, cwd)
     _check_encryption(env, r)
-    _check_apify(env, r)
+    _check_serp(env, r)
     _check_ai(env, r)
     _check_smtp(env, r)
     _check_channels(env, r)
