@@ -235,10 +235,11 @@ def test_nightly_backup_job_writes_backup_prunes_and_records_last_backup(tmp_pat
 
 
 def test_nightly_backup_failure_raises_backup_failed_alert_and_reraises(tmp_path, monkeypatch):
+    from notify import dispatcher
     from scheduler import jobs
 
     sent = []
-    monkeypatch.setattr(jobs, "_dispatch_now", lambda db, row: sent.append(row))
+    monkeypatch.setattr(dispatcher, "_dispatch_now", lambda db, row: sent.append(row))
     monkeypatch.setattr(jobs.backup, "create_backup",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
     db = _db(tmp_path)
@@ -249,15 +250,16 @@ def test_nightly_backup_failure_raises_backup_failed_alert_and_reraises(tmp_path
     rows = db.list_alerts(status="open")
     assert len(rows) == 1 and rows[0]["kind"] == "backup_failed"
     assert "disk full" in rows[0]["message"]
-    assert sent and sent[0]["kind"] == "backup_failed"  # dispatched directly, like the watchdog
+    assert sent and sent[0]["kind"] == "backup_failed"  # created AND dispatched (emit_alert)
     assert backup.last_backup(db) is None  # a failed run never counts as a backup
 
 
 def test_nightly_backup_success_auto_resolves_the_open_failure_alert(tmp_path, monkeypatch):
+    from notify import dispatcher
     from scheduler import jobs
 
     monkeypatch.setenv("BACKUP_DIR", str(tmp_path / "bk"))
-    monkeypatch.setattr(jobs, "_dispatch_now", lambda db, row: None)
+    monkeypatch.setattr(dispatcher, "_dispatch_now", lambda db, row: None)
     db = _db(tmp_path)
     db.add_alert("backup_failed", "warning", "nightly_backup", "earlier", "backup_failed:nightly_backup")
 

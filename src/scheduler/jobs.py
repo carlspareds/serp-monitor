@@ -19,7 +19,7 @@ Multi-subject behaviour (documented in README "Projects and subjects"):
   * deadman_check and the Apify budget check: deployment-wide, unchanged.
 """
 from database import backup
-from notify.dispatcher import _dispatch_now, send_info_digest
+from notify.dispatcher import emit_alert, send_info_digest
 from processing.auto_resolve import auto_resolve
 from report import weekly
 from scheduler import deadman
@@ -87,17 +87,15 @@ BACKUP_JOB_NAME = "nightly_backup"
 
 
 def _alert_backup_failed(db, error: Exception) -> None:
-    """One open `backup_failed` alert (deduped per job name), dispatched
-    DIRECTLY like the watchdog's: a backup failure must not wait for the
-    digest job. Never raises -- the original error is what the caller
-    re-raises, and an alerting hiccup must not hide it."""
+    """One open `backup_failed` alert (deduped per job name) through
+    notify.dispatcher.emit_alert, the single create-and-dispatch point every
+    producer must use (tests/test_dispatch_guard.py). Never raises -- the
+    original error is what the caller re-raises, and an alerting hiccup
+    must not hide it."""
     message = f"Nightly backup failed: {error}"[:500]
     try:
-        alert_id = db.add_alert(BACKUP_FAILED_KIND, "warning", BACKUP_JOB_NAME, message,
-                                f"{BACKUP_FAILED_KIND}:{BACKUP_JOB_NAME}")
-        if alert_id:
-            _dispatch_now(db, {"id": alert_id, "kind": BACKUP_FAILED_KIND, "severity": "warning",
-                               "country": BACKUP_JOB_NAME, "message": message})
+        emit_alert(db, BACKUP_FAILED_KIND, "warning", BACKUP_JOB_NAME, message,
+                   f"{BACKUP_FAILED_KIND}:{BACKUP_JOB_NAME}")
     except Exception as e:  # noqa: BLE001 -- see docstring
         print(f"[nightly_backup] could not raise the backup_failed alert: {e}")
 

@@ -42,9 +42,9 @@ _DIGEST_LOOKBACK_ROWS = 2000
 
 
 # Alerts about the deployment itself, not about one subject: no "Project ▸
-# Subject: " prefix (the budget is deployment-wide, a missed job is the
-# scheduler's).
-GLOBAL_ALERT_KINDS = frozenset({"apify_budget", "job_missed"})
+# Subject: " prefix (the budget is deployment-wide, a missed job and a failed
+# nightly backup are the scheduler's).
+GLOBAL_ALERT_KINDS = frozenset({"apify_budget", "job_missed", "backup_failed"})
 
 
 def subject_prefix(db, alert_row: dict) -> str:
