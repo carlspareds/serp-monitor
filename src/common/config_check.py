@@ -16,6 +16,8 @@ later -- or unsafe is reported as an error:
     in, the opposite of what was intended.
   - APP_ENCRYPTION_KEY set but unusable.
   - DB_PATH whose directory can't be created/written.
+  - BACKUP_DIR (nightly backups) that can't be created/written, or
+    BACKUP_KEEP_DAYS that isn't a positive integer.
   - SMTP_HOST/SMTP_USER/SMTP_PASS partially set: email_sender.is_configured
     needs all three, so email would be silently disabled.
   - SMTP_PORT not an integer in 1..65535 while SMTP is configured
@@ -54,6 +56,8 @@ ENV_VARS: dict[str, bool] = {
     "AUTH_USER": False,
     "AUTH_PASS": True,
     "DB_PATH": False,
+    "BACKUP_DIR": False,
+    "BACKUP_KEEP_DAYS": False,
     "ENV_FILE": False,
     "SMTP_HOST": False,
     "SMTP_PORT": False,
@@ -295,6 +299,27 @@ def _check_db(env, r: Report, cwd: Path) -> None:
     r.add(OK, "DB_PATH", f"{path}" + ("" if raw else " (default)"))
 
 
+def _check_backup(env, r: Report, cwd: Path) -> None:
+    raw = _get(env, "BACKUP_DIR")
+    if raw:
+        path = _resolve(raw, cwd)
+        problem = _writable_dir_problem(path)
+        if problem:
+            r.add(ERROR, "BACKUP_DIR", problem,
+                  "fix the permissions or unset it (default: backups/ next to the database)")
+        else:
+            r.add(OK, "BACKUP_DIR", str(path))
+    keep = _get(env, "BACKUP_KEEP_DAYS")
+    if keep:
+        try:
+            n = int(keep)
+        except ValueError:
+            n = 0
+        if n < 1:
+            r.add(ERROR, "BACKUP_KEEP_DAYS", f"={keep} is not a positive integer",
+                  "days of nightly backups to keep, e.g. 14 (the default when unset)")
+
+
 def _check_env_file(env, r: Report, cwd: Path) -> None:
     raw = _get(env, "ENV_FILE")
     if not raw:
@@ -479,6 +504,7 @@ def check_config(env: Mapping[str, str] | None = None, cwd: Path | None = None) 
     _check_auth(env, r)
     _check_https(env, r)
     _check_db(env, r, cwd)
+    _check_backup(env, r, cwd)
     _check_env_file(env, r, cwd)
     _check_env_permissions(env, r, cwd)
     _check_encryption(env, r)

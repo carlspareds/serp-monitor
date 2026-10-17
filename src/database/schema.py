@@ -298,6 +298,9 @@ class SchemaMixin:
     def _init_db(self):
         conn = self._connect()
         cur = conn.cursor()
+        # Safety copy before anything below can ALTER an existing database
+        # (MigrationsMixin, PRAGMA user_version vs SCHEMA_VERSION).
+        self._backup_before_migration(cur)
 
         cur.execute(
             """
@@ -677,6 +680,7 @@ class SchemaMixin:
         self._ensure_default_project_name(cur)
         self._ensure_subject_1_backfill(cur)
         self._ensure_url_keys(cur)
+        self._stamp_schema_version(cur)
         conn.commit()
         conn.close()
 

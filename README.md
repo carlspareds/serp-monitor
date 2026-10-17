@@ -61,7 +61,11 @@ This creates a virtualenv, installs dependencies, copies `.env.example` to
 `127.0.0.1:8000` (open it in your browser yourself). Re-running it is safe:
 every step is skipped if already done. `make run` also starts the embedded
 scheduler (weekly report, daily alert check, daily info digest, weekly
-purge, watchdog); set `DISABLE_SCHEDULER=1` to turn it off.
+purge, nightly backup, watchdog); set `DISABLE_SCHEDULER=1` to turn it off.
+The nightly backup writes a copy of the database to `data/backups/` at
+03:30 UTC and keeps 14 days of them (plus a copy before any schema
+migration); to restore one, stop the server and run
+`.venv/bin/python scripts/restore_backup.py data/backups/<file>.db --yes`.
 
 **Sign-in is required.** The first time you open it, it asks you to
 **create the admin account** (username and a password of at least 12
@@ -89,7 +93,8 @@ mkdir -p data && docker compose up -d --build
 ```
 
 Same dashboard on `127.0.0.1:8000`, sign-in required here too. `data/`
-holds the database, evidence, exports and the `.env` Settings saves to.
+holds the database, evidence, exports, nightly backups and the `.env`
+Settings saves to.
 Nothing is seeded: `docker compose run --rm app python scripts/seed_demo_data.py`
 loads the demo. Env precedence, `TRUSTED_PROXIES` and HTTPS in
 [`docs/deployment.md`](docs/deployment.md).

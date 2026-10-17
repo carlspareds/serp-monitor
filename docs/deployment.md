@@ -40,7 +40,8 @@ mkdir -p data && docker compose up -d --build
 
 Same dashboard on `127.0.0.1:8000`, and sign-in is required here too: the
 first visit asks you to create the admin account. `data/` holds the
-database, evidence and exports (the directory `make run` uses as well) and
+database, evidence, exports and nightly backups (`data/backups/`, the
+directory `make run` uses as well) and
 the `.env` that Settings and the setup wizard save keys to; variables in
 the repo `.env` are passed to the container and take precedence over it,
 even when left empty. Nothing is seeded:
@@ -49,6 +50,15 @@ demo. The app binds `0.0.0.0` inside the container, so `ALLOW_NO_AUTH` is
 refused; behind a reverse proxy, `TRUSTED_PROXIES` is the address the proxy
 connects from as the container sees it (the Docker bridge gateway, not
 `127.0.0.1`).
+
+Backups live in the volume, so they survive a rebuild and can be copied
+off the host from `data/backups/`. To restore one, stop the app first:
+
+```
+docker compose stop app
+docker compose run --rm app python scripts/restore_backup.py /data/backups/<file>.db --yes
+docker compose up -d
+```
 
 The variables themselves (`FORCE_HTTPS`, `TRUSTED_PROXIES`, `HOST`,
 `ALLOW_NO_AUTH` and the rest) are listed in

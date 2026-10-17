@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Nightly database backup: the scheduler job `nightly_backup` writes a
+  `VACUUM INTO` copy to `data/backups/` (or `BACKUP_DIR`) at 03:30 UTC and
+  deletes copies older than `BACKUP_KEEP_DAYS` (14). A failed run raises a
+  `backup_failed` alert, auto-resolved by the next success; Settings →
+  Backup shows the last copy's time and size. A `-pre-migration` copy is
+  taken automatically before a schema migration (`PRAGMA user_version` vs
+  `SCHEMA_VERSION`). `scripts/restore_backup.py <file> --yes` restores a
+  verified backup with the server stopped, keeping the current file as
+  `<db>.before-restore-<timestamp>`. (#6)
+
 ## [1.0.0] - 2026-10-16
 
 First public release. The code was extracted from a larger private tool,

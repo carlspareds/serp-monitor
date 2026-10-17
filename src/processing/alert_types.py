@@ -23,6 +23,9 @@ ALERT_TYPES: dict[str, dict[str, str]] = {
     "apify_budget": {"sev": "warning"},
     # Dead-man's switch: an enabled job did not run inside its window.
     "job_missed": {"sev": "warning"},
+    # The nightly database backup (scheduler.jobs.nightly_backup) failed;
+    # auto-resolved by the next successful run.
+    "backup_failed": {"sev": "warning"},
     # URL lifecycle: a negative URL dropped out of the tracked top-N. This is
     # a win, not an incident, so it is informational and auto-resolves if
     # the URL comes back.
