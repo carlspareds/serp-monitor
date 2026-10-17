@@ -29,12 +29,15 @@ from apify.actors import normalize_bing, normalize_google
 from database.models import Database
 from processing.alerts import generate_alerts
 from processing.classifier import classify_batch, classify_result
+from serp.serper_provider import normalize_serper
 
 # ========================================================================= #
-# 1) SERP parsing accuracy: does the Apify dataset normalizer extract the
+# 1) SERP parsing accuracy: does each provider's normalizer extract the
 #    fields we actually rely on (url, position, title, domain) correctly
-#    from the raw actor payload shape? Includes Bing's breadcrumb-vs-
-#    redirector edge case (see apify.actors._bing_real_url).
+#    from the raw payload shape? Apify google/bing (includes Bing's
+#    breadcrumb-vs-redirector edge case, see apify.actors._bing_real_url)
+#    and Serper.dev google (a synthetic payload in evals/fixtures/, see
+#    serp.serper_provider.normalize_serper).
 # ========================================================================= #
 _GOOGLE_CASES = [
     {
@@ -85,6 +88,28 @@ _BING_CASES = [
 ]
 
 
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+_SERPER_CASES = [
+    {
+        "fixture": "serper_google_us.json",
+        "query": "Jordan Ashworth",
+        "country": "us",
+        "expected": [
+            # Tracking params (utm_*, srsltid) dropped; www. kept in the URL, not the domain.
+            {"position": 1, "url": "https://www.jordanashworth.example/",
+             "domain": "jordanashworth.example", "title": "Jordan Ashworth"},
+            # Trailing slash dropped.
+            {"position": 2, "url": "https://jordan-ashworth.example/blog",
+             "domain": "jordan-ashworth.example"},
+            # Fragment dropped; the fourth row (no link) must be absent.
+            {"position": 3, "url": "https://complaints-board.example/jordan-ashworth",
+             "domain": "complaints-board.example"},
+        ],
+    },
+]
+
+
 def eval_serp_parsing() -> dict:
     total = 0
     correct = 0
@@ -105,6 +130,15 @@ def eval_serp_parsing() -> dict:
             correct += ok
             if not ok:
                 failures.append({"engine": "bing", "expected": expected, "actual": actual})
+    for case in _SERPER_CASES:
+        payload = json.loads((_FIXTURES / case["fixture"]).read_text())
+        got = normalize_serper(payload, case["query"], case["country"])
+        for expected, actual in zip(case["expected"], got, strict=True):
+            total += 1
+            ok = all(actual.get(k) == v for k, v in expected.items())
+            correct += ok
+            if not ok:
+                failures.append({"engine": "serper/google", "expected": expected, "actual": actual})
     return {"metric": "serp_parsing_accuracy", "n_cases": total,
             "accuracy": correct / total if total else None, "failures": failures}
 
