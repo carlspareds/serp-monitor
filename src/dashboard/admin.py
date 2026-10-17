@@ -10,7 +10,6 @@ Administration from the web: API key (.env).
 """
 
 import os
-import re
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -68,13 +67,8 @@ def check_env_values(pairs: Iterable[tuple[str, str]]) -> None:
 def apify_check_reason(detail: str) -> str:
     """Plain reason for a failed Apify key check (ApifyClient.check_account
     detail), without the raw response body Apify sends back."""
-    m = re.search(r"HTTP (\d{3})", detail or "")
-    if not m:
-        return "Apify could not be reached to verify this key"
-    code = int(m.group(1))
-    if code == 429 or code >= 500:
-        return f"Apify returned an error while verifying this key (HTTP {code})"
-    return f"Apify rejected this key (HTTP {code})"
+    from serp.base import check_reason
+    return check_reason(detail, "Apify")
 
 
 def set_env(env_path: str, key: str, value: str) -> None:

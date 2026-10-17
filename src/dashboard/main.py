@@ -43,7 +43,6 @@ sys.path.insert(0, str(project_root / "src"))
 # "from dashboard.main import ...". Registering the alias avoids re-executing.
 sys.modules.setdefault("dashboard.main", sys.modules[__name__])
 
-from apify.runner import ApifyRunner
 from common import config_check
 from dashboard import deps, logging_setup, security, ui
 from dashboard.context import SubjectMiddleware, is_fragment_request
@@ -100,6 +99,7 @@ from dashboard.ui_helpers import (
     report_defaults,
     shell,
 )
+from serp.runner import SerpRunner
 
 # isort: split
 from assistant import router as assistant_router
@@ -183,10 +183,13 @@ jobs = JobManager()
 _runner = None
 
 
-def get_runner() -> ApifyRunner:
+def get_runner() -> SerpRunner:
+    """The search runner over the ACTIVE SERP provider (serp.registry);
+    reset to None by Settings whenever a provider key or the provider
+    choice changes, so the next search picks the new one up."""
     global _runner
     if _runner is None:
-        _runner = ApifyRunner(db=db)
+        _runner = SerpRunner(db=db)
     return _runner
 
 

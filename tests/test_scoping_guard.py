@@ -171,9 +171,9 @@ _ALLOWLIST: dict[str, str] = {
         "FTS5 index maintenance over the WHOLE search_results table "
         "(trigger + idempotent initial backfill) -- not a view, subject "
         "filtering is applied on READ in search_text().",
-    "apify_month_cost":
-        "Apify infrastructure cost for the month (whole-deployment "
-        "billing), not a PER-subject figure -- _check_apify_budget uses "
+    "serp_month_cost":
+        "SERP provider cost for the month, every provider (whole-deployment "
+        "billing), not a PER-subject figure -- _check_serp_budget uses "
         "it for a global budget alert, there's no 'subject 1 budget' "
         "distinct from 'subject 2 budget'.",
     "deployment_alert":

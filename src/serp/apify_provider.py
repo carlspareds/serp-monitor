@@ -1,65 +1,48 @@
-"""
-Apify Runner
-================================
-Orchestrates one or more Apify actors from start to finish (1.1: google +
-configured verticals, see apify.actors.ACTORS), for each engine:
+"""Apify adapter: the hosted scraper actors behind `serp.base.SerpProvider`.
 
-    1. Builds the input.
+One engine per `search()` call (the runner loops engines):
+
+    1. Builds the actor input (_build_input/_engine_input).
     2. Launches the run (start_actor).
     3. Polls until it finishes (wait_for_run).
     4. Downloads the dataset.
     5. NORMALIZES the results with the engine's normalizer (see
-       apify.actors) into flat records, ready to classify and save.
+       apify.actors.ACTORS) into the row schema of serp.base.
 
-Always returns records with this normalized shape:
+The actor registry, the normalizers and the Apify REST client stay in
+`apify.actors` / `apify.client` untouched; this module is the former
+`apify.runner.ApifyRunner` minus the multi-engine loop and the budget
+pre-flight, which now live in `serp.runner.SerpRunner` for every provider.
 
-    {
-        "query":        str,   # searched term
-        "country_code": str,   # search country (us, ca, gb, ...)
-        "position":     int,   # organic position on Google
-        "title":        str,
-        "url":          str,
-        "displayed_url":str,
-        "description":  str,
-        "domain":       str,   # domain extracted from the URL
-    }
+Retries with backoff (1.4) in TWO separate phases -- different from the
+low-level retry of ApifyClient._request (retries ONE HTTP request):
+  LAUNCH phase: if start_actor fails transiently, relaunching is safe
+    (no run is billing yet).
+  WAIT phase: if wait_for_run fails (wait timeout or 5xx during
+    polling), the run is STILL ALIVE on Apify -- the WAIT is retried on
+    the SAME run_id, the actor is NEVER relaunched (relaunching = real
+    double spend; review 1.4 HIGH finding).
 
-search() also returns "features": list[dict] (1.2) -- SERP features
-(PAA/related/aio/knowledge_panel) extracted DEFENSIVELY by
-_extract_features (see the method's docstring), an empty list if the
-payload has nothing recognizable.
-
-Multi-engine extraction (1.1): search() accepts `engines: list[str]`
-(defaults to ["google"], IDENTICAL to the behavior before this item). For
-each valid and configured engine (see apify.actors.ACTORS) it launches a
-run of ITS actor with the same two-phase poll/retry as before, normalizes
-with the engine's normalizer and tags each row with "engine". `position`
-is PER ENGINE (intra-engine: each normalizer numbers its own results,
-there is no "global" position crossing engines). SERP features (1.2) are
-ONLY extracted from the google run -- the verticals do not carry that
-information. An engine with no configured actor or whose run fails after
-exhausting retries does NOT bring down the others (best-effort per
-engine, see outcome["warnings"]/outcome["engine_runs"]); ApifyError is
-only raised if NO requested engine produced results.
+SERP features (1.2) are extracted from the google payload only (the
+verticals do not carry them): `ProviderRun.feature_rows` keeps the legacy
+per-row list (_extract_features), `ProviderRun.features` the F1 summary.
 """
 
+import os
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
+from apify.actors import ACTORS
+from apify.client import ApifyClient, ApifyError
 from config.apify_config import DEFAULT_INPUT
+from serp.base import (
+    ENGINE_NOT_CONFIGURED_MSG,
+    ProviderRun,
+    SerpProviderError,
+    check_reason,
+)
 
-from .actors import ACTORS, ENGINE_NOT_CONFIGURED_MSG, VALID_DEVICES
-from .client import ApifyClient, ApifyError
-
-# Retries with backoff (1.4) in TWO separate phases -- different from the
-# low-level retry of ApifyClient._request (retries ONE HTTP request):
-#   LAUNCH phase: if start_actor fails transiently, relaunching is safe
-#     (no run is billing yet).
-#   WAIT phase: if wait_for_run fails (wait timeout or 5xx during
-#     polling), the run is STILL ALIVE on Apify -- the WAIT is retried on
-#     the SAME run_id, the actor is NEVER relaunched (relaunching = real
-#     double spend; review 1.4 HIGH finding).
 MAX_SEARCH_ATTEMPTS = 3
 RETRY_BASE_SECONDS = 30
 
@@ -115,323 +98,63 @@ _KNOWN_PAGE_KEYS = {
 }
 
 
-class ApifyRunner:
-    def __init__(self, client: ApifyClient | None = None, db=None):
-        self.client = client or ApifyClient()
-        # FIX 1 item 1e (hardening audit): `db` optional -- only passed by
-        # dashboard.main.get_runner (the only caller that may want the
-        # budget pre-flight of _check_budget). The other constructors in
-        # the repo (report.weekly, most tests) still
-        # instantiate `ApifyRunner()` without `db` -- no budget to check,
-        # no change in behavior.
-        self.db = db
+class ApifyProvider:
+    name = "apify"
+    # Only google takes a device key (`mobileResults`, see _engine_input);
+    # bing has no known device input and always renders desktop (1.3, H5).
+    engines: ClassVar[dict[str, set[str]]] = {"google": {"desktop", "mobile"}, "bing": {"desktop"}}
 
-    # ------------------------------------------------------------------ #
-    # Full flow in a single method
-    # ------------------------------------------------------------------ #
-    def search(
-        self,
-        queries: list[str],
-        country_code: str = "us",
-        language_code: str = "en",
-        max_pages: int = 1,
-        results_per_page: int = 10,
-        max_wait: int = 300,
-        on_status: Callable | None = None,
-        engines: list[str] | None = None,
-        device: str = "desktop",
-        override_budget: bool = False,
-        on_engine: Callable | None = None,
-    ) -> dict[str, Any]:
-        """
-        Executes a complete search (1.1: on one or several engines) and
-        returns a dict:
+    def __init__(self, client: ApifyClient | None = None):
+        # `client` injected by tests (a fake); otherwise built lazily so an
+        # unconfigured install never raises just by being inspected.
+        self._client = client
 
-            {
-                "run_id":   str,       # run_id of the "primary" engine (see below)
-                "status":   str,       # status of the primary engine
-                "country_code": str,
-                "queries":  List[str],
-                "results":  List[dict],  # from ALL successful engines, each
-                                          # row with "engine" (1.1) and "device" (1.3)
-                "features": List[dict],  # SERP features (1.2) -- ONLY from the
-                                          # google run (verticals don't carry them)
-                "cost_usd": float | None,       # sum of the successful engines (1.4)
-                "compute_units": float | None,  # sum of the successful engines (1.4)
-                "retries":  int,        # sum of retries of the successful engines
-                "engine_runs": List[dict],  # 1 entry per requested engine, see below
-                "warnings": List[str],  # skipped/failed engines, readable text
-            }
+    @property
+    def client(self) -> ApifyClient:
+        if self._client is None:
+            self._client = ApifyClient()
+        return self._client
 
-        `device` (1.3, mobile/desktop split, defaults to "desktop" --
-        IDENTICAL to the behavior before this item): a SINGLE device per
-        call, same approach as `country_code` -- to cover "both devices"
-        (acceptance 1.3) the caller launches two searches, one per device
-        (same pattern as "one run per country" in
-        report.multi_country.run_multi_country for several countries).
-        Whitelisted against apify.actors.VALID_DEVICES -- a value outside
-        that list falls back to "desktop" instead of being propagated
-        unvalidated to the actor input. ONLY the google engine receives
-        the device key in its input (`mobileResults`, conjectural -- see
-        _engine_input); bing has no known device key, it is omitted
-        (documented, brief 1.3) instead of guessing one with no basis --
-        ITS rows/engine_run are tagged "device": "desktop" (the REAL
-        device it rendered with, review H5) regardless of what was
-        requested, with a notice in "warnings".
+    def configured(self) -> bool:
+        return self._client is not None or bool((os.getenv("APIFY_API_KEY") or "").strip())
 
-        `engines` (1.1, defaults to ["google"] -- IDENTICAL to the
-        behavior before this item): an engine with no configured actor
-        (see apify.actors.ACTORS) or whose run fails after exhausting
-        retries is SKIPPED (best-effort per engine: a down engine does
-        not bring down the others), recording the reason in "warnings"
-        and in its "engine_runs" entry (with "error" not None). ApifyError
-        is only raised if NO requested engine produced results.
-
-        Each successful "engine_runs" entry has the SAME shape as the
-        legacy (pre-1.1) single-engine outcome -- run_id/status/
-        country_code/queries/results/features/cost_usd/compute_units/
-        retries -- plus "engine" and "error"=None, so the caller can treat each entry
-        as "the outcome of a run" and run the same saving pipeline as
-        before, once per engine (see
-        report.multi_country.persist_engine_run: "one DB run per
-        engine"). The TOP-LEVEL `run_id`/`status` are those of the first
-        successful engine in the order of `engines` (google if requested
-        and successful, unless requested in a different order).
-
-        `position` (1.1) is PER ENGINE: each normalizer numbers its own
-        results: there is no "global" position crossing engines.
-
-        Retries with backoff (1.4): per engine, same as before 1.1 --
-        only transient failures are retried (network timeout, HTTP
-        5xx/429, ConnectionError) up to MAX_SEARCH_ATTEMPTS times, with
-        backoff RETRY_BASE_SECONDS·2^n; 401/403/404, invalid input or a
-        run FAILED by the actor propagate immediately (without retrying)
-        and that engine is left as failed (best-effort, see above).
-
-        Apify budget (FIX 1 item 1e, hardening audit): if this runner was
-        built with `db` (see __init__/dashboard.main.get_runner) and
-        there is a configured monthly budget (setting
-        apify_monthly_budget > 0) ALREADY exceeded by the month's
-        accumulated spend, ApifyError is raised HERE, BEFORE launching
-        any actor -- Database._check_apify_budget (the previous
-        mechanism) was only evaluated AFTER saving the run, when the
-        spend had ALREADY happened. `override_budget=True` skips the
-        cutoff (operator button for an exceptional case: e.g. an urgent
-        search the same day the budget was exceeded). Without `db`
-        (legacy callers: report.weekly, most tests), there
-        is no pre-flight -- behavior IDENTICAL to before this fix.
-
-        `on_engine` (optional, progress UI): per-engine progress callback
-        `on_engine(engine, state, **info)` with state "launching", "running"
-        (info: apify_status, apify_elapsed_s -- the same polls `on_status`
-        receives, but tagged with the engine), "skipped" or "error" (info:
-        message). `on_status(status, elapsed)` keeps its legacy 2-arg shape
-        (scripts/maintenance/smoke_apify.py). Callback failures never break the search.
-        """
-        self._check_budget(override_budget)
-
-        def _emit(engine: str, state: str, **info) -> None:
-            if on_engine is None:
-                return
-            try:
-                on_engine(engine, state, **info)
-            except Exception as exc:  # noqa: BLE001 -- progress is best-effort
-                print(f"[Apify] on_engine callback failed: {exc}")
-        # Dedupe preserving order -- engines=None or [] is equivalent to
-        # the behavior before 1.1 (a single engine: google).
-        requested = list(dict.fromkeys(engines or ["google"]))
-        # 1.3: defensive whitelist -- a value outside VALID_DEVICES
-        # (hand-crafted query param, manipulated form) falls back to
-        # "desktop" instead of being propagated unvalidated to the actor
-        # input.
-        device = device if device in VALID_DEVICES else "desktop"
-
-        base_input = self._build_input(
-            queries, country_code, language_code, max_pages, results_per_page
-        )
-
-        engine_runs: list[dict[str, Any]] = []
-        warnings: list[str] = []
-        total_retries = 0
-        # Review LOW #5: keeps the LAST real ApifyError caught (not the
-        # ones for "unknown engine"/"not configured yet", which have no
-        # associated exception) -- with a single requested engine, if it
-        # fails, THIS exception is relaunched as-is (original message,
-        # not wrapped twice); with several engines, it is chained as the
-        # __cause__ of the combined ApifyError (`raise ... from
-        # last_exc`) so as not to lose the original traceback in
-        # logs/debugging.
-        last_exc: ApifyError | None = None
-
-        for engine in requested:
-            entry = ACTORS.get(engine)
-            if entry is None:
-                msg = f"{engine}: unknown engine"
-                warnings.append(msg)
-                _emit(engine, "skipped", message=msg)
-                engine_runs.append(
-                    self._failed_engine_run(engine, country_code, queries, msg, device)
-                )
-                continue
-
-            actor_id, normalize = entry.get("id"), entry.get("normalize")
-            if not actor_id or not normalize:
-                # PONYTAIL (#9): uses the shared constant from actors.py
-                # -- single source of truth for the exact text (it used
-                # to be a literal copy here AND in
-                # actors.ENGINE_NOT_CONFIGURED_MSG, which stayed dead/
-                # with no real consumer).
-                msg = f"{engine}: {ENGINE_NOT_CONFIGURED_MSG}"
-                warnings.append(msg)
-                _emit(engine, "skipped", message=msg)
-                engine_runs.append(
-                    self._failed_engine_run(engine, country_code, queries, msg, device)
-                )
-                continue
-
-            # 1.3 (H5, review): ONLY google supports the requested device
-            # -- the rest of the engines (bing today) have no known
-            # device key (see _engine_input) and ALWAYS render desktop,
-            # regardless of `device`. Tagging their rows/run as "mobile"
-            # when it was actually captured on desktop would be FALSE
-            # evidence (it would look like a device it is not) -- it is
-            # tagged with the REAL one, and a notice is added to warnings
-            # (visible in /job) that the requested device was ignored for
-            # this engine.
-            effective_device = device if engine == "google" else "desktop"
-            if engine != "google" and device == "mobile":
-                warnings.append(
-                    f"{engine}: device ignored (no device support, desktop was used)"
-                )
-
-            input_data = self._engine_input(engine, base_input, device)
-            status_cb = on_status
-            if on_engine is not None:
-                def status_cb(status, elapsed, _engine=engine):
-                    if on_status:
-                        on_status(status, elapsed)
-                    _emit(_engine, "running", apify_status=status, apify_elapsed_s=elapsed)
-            _emit(engine, "launching")
-            try:
-                run_id, status, raw_items, cost_usd, compute_units, retries = self._run_actor(
-                    engine, actor_id, input_data, max_wait, status_cb
-                )
-            except ApifyError as exc:
-                last_exc = exc
-                msg = f"{engine}: {exc}"
-                warnings.append(msg)
-                _emit(engine, "error", message=msg)
-                engine_runs.append(
-                    self._failed_engine_run(engine, country_code, queries, msg, effective_device)
-                )
-                continue
-
-            total_retries += retries
-            results = normalize(raw_items, country_code)
-            for row in results:
-                row["engine"] = engine
-                row["device"] = effective_device
-            features = self._extract_features(raw_items) if engine == "google" else []
-            print(f"[Apify] {engine}: {len(results)} results extracted "
-                  f"from {len(raw_items)} page(s).")
-            engine_runs.append({
-                "engine": engine,
-                "device": effective_device,
-                "run_id": run_id,
-                "status": status,
-                "country_code": country_code,
-                "queries": queries,
-                "results": results,
-                "features": features,
-                "cost_usd": cost_usd,
-                "compute_units": compute_units,
-                "retries": retries,
-                "error": None,
-            })
-
-        successful = [er for er in engine_runs if er.get("error") is None]
-        if not successful:
-            # LOW #5: a single requested engine -- relaunches the
-            # ORIGINAL ApifyError as-is (same message as before 1.1),
-            # instead of wrapping it in the combined "All engines..."
-            # message.
-            if len(requested) == 1 and last_exc is not None:
-                raise last_exc
-            combined = "; ".join(warnings) or "no engine produced results"
-            raise ApifyError(
-                f"All requested engines failed ({', '.join(requested)}): {combined}"
-            ) from last_exc
-
-        primary = successful[0]
-        google_run = next((er for er in successful if er["engine"] == "google"), None)
-        costs = [er["cost_usd"] for er in successful if er.get("cost_usd") is not None]
-        cus = [er["compute_units"] for er in successful if er.get("compute_units") is not None]
-
-        return {
-            "run_id": primary["run_id"],
-            "status": primary["status"],
-            "country_code": country_code,
-            "queries": queries,
-            "results": [row for er in successful for row in er["results"]],
-            "features": google_run["features"] if google_run else [],
-            "cost_usd": sum(costs) if costs else None,
-            "compute_units": sum(cus) if cus else None,
-            "retries": total_retries,
-            "engine_runs": engine_runs,
-            "warnings": warnings,
-        }
-
-    # ------------------------------------------------------------------ #
-    # Internal helpers
-    # ------------------------------------------------------------------ #
-    def _check_budget(self, override_budget: bool) -> None:
-        """FIX 1 item 1e (hardening audit): budget pre-flight -- see
-        search()'s docstring. Without `self.db` (legacy caller) or with
-        `override_budget=True`, no-op. Any failure reading settings/DB is
-        swallowed (best-effort, same spirit as the rest of the repo): an
-        unreadable budget must not block a real search."""
-        if self.db is None or override_budget:
-            return
+    def check_credentials(self) -> tuple[bool, str]:
         try:
-            budget = float(self.db.get_setting("apify_monthly_budget", "0") or "0")
-        except (ValueError, TypeError):
-            return
-        if budget <= 0:
-            return
+            res = self.client.check_account()
+        except Exception as exc:  # noqa: BLE001 -- reported, never raised
+            res = {"ok": False, "detail": str(exc)}
+        if res.get("ok"):
+            return True, f"key verified (user: {res.get('username')})"
+        return False, check_reason(res.get("detail") or "", "Apify")
+
+    def search(self, query: str, country: str, engine: str, device: str, *,
+               language: str = "en", pages: int = 1, per_page: int = 10,
+               max_wait: int = 300, on_status: Callable | None = None) -> ProviderRun:
+        entry = ACTORS.get(engine) or {}
+        actor_id, normalize = entry.get("id"), entry.get("normalize")
+        if engine not in self.engines or not actor_id or not normalize:
+            raise SerpProviderError(f"{engine}: {ENGINE_NOT_CONFIGURED_MSG} ({self.name})")
+        device = device if device in self.engines[engine] else "desktop"
+        base_input = self._build_input([query], country, language, pages, per_page)
+        input_data = self._engine_input(engine, base_input, device)
         try:
-            spent = self.db.apify_month_cost()["cost_usd"]
-        except Exception:  # noqa: BLE001 -- best-effort, see docstring
-            return
-        if spent >= budget:
-            raise ApifyError(
-                f"Apify monthly budget exceeded: spent ${spent:.2f} >= budget "
-                f"${budget:.2f}. Search blocked (pass override_budget=True to force)."
+            run_id, status, raw_items, cost_usd, compute_units, retries = self._run_actor(
+                engine, actor_id, input_data, max_wait, on_status
             )
-
-    def _failed_engine_run(
-        self, engine: str, country_code: str, queries: list[str], error_msg: str,
-        device: str = "desktop",
-    ) -> dict[str, Any]:
-        """engine_runs entry (1.1) for an engine that was skipped (no
-        configured actor, or unknown) or whose run failed after
-        exhausting retries -- a shape recognizable by the caller
-        (error not None) without breaking the rest of the pipeline
-        (best-effort per engine). device (1.3): same value as the call to
-        search(), for shape consistency with successful entries."""
-        return {
-            "engine": engine,
-            "device": device,
-            "run_id": None,
-            "status": "ERROR",
-            "country_code": country_code,
-            "queries": queries,
-            "results": [],
-            "features": [],
-            "cost_usd": None,
-            "compute_units": None,
-            "retries": 0,
-            "error": error_msg,
-        }
+        except ApifyError as exc:
+            exc.retryable = _is_retryable(exc)
+            raise
+        results = normalize(raw_items, country)
+        feature_rows = self._extract_features(raw_items) if engine == "google" else []
+        print(f"[Apify] {engine}: {len(results)} results extracted "
+              f"from {len(raw_items)} page(s).")
+        return ProviderRun(
+            items=results, cost_usd=cost_usd, run_id=run_id, provider=self.name,
+            engine=engine, device=device, country=country,
+            features=_feature_summary(feature_rows) if engine == "google" else {},
+            raw=raw_items, feature_rows=feature_rows, compute_units=compute_units,
+            retries=retries, status=status,
+        )
 
     def _run_actor(
         self,
@@ -662,3 +385,13 @@ class ApifyRunner:
                   f"{sorted(unknown_keys)} -- check whether the actor carries a new SERP feature.")
 
         return features
+
+
+def _feature_summary(rows: list[dict]) -> dict[str, Any]:
+    """F1 summary (serp.base.ProviderRun.features) from the legacy rows:
+    what the google actor payload exposes today -- PAA count, AI Overview
+    and Knowledge Panel presence. Local pack / video / sitelinks are not
+    in this actor's payload, so they are absent (not False)."""
+    kinds = [r.get("feature_type") for r in rows]
+    return {"people_also_ask": kinds.count("paa"), "ai_overview": "aio" in kinds,
+            "knowledge_panel": "knowledge_panel" in kinds}

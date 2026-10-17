@@ -89,6 +89,10 @@ _RUNS_COLUMNS = {
     "cost_usd": "REAL",
     "compute_units": "REAL",
     "retries": "INTEGER DEFAULT 0",
+    # Which SERP provider ran it (issue #3): 'apify' | 'serper' ... DEFAULT 'apify' is the
+    # honest value for every row that existed before the provider abstraction (and for
+    # legacy callers that don't pass it). The monthly budget sums every provider.
+    "provider": "TEXT DEFAULT 'apify'",
     # Idempotency of the post-run job (3.1, H3 arbitration): 1 once update_url_lifecycle
     # has already processed this run -- a second call on the same run_id (retry, duplicate
     # chokepoint) exits early without duplicating missed_runs. DEFAULT 0 covers both NEW

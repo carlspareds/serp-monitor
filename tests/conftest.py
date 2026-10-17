@@ -17,7 +17,8 @@ from datetime import UTC, datetime, timedelta
 # (real same_person -> evidence not captured; real toxicity over synthetic
 # fixtures). They are set to "" BEFORE any app import: falsy for
 # is_configured(), and load_dotenv (override=False) doesn't overwrite them.
-for _key in ("GEMINI_API_KEY", "APIFY_API_KEY", "TELEGRAM_BOT_TOKEN", "SLACK_WEBHOOK_URL",
+for _key in ("GEMINI_API_KEY", "APIFY_API_KEY", "SERPER_API_KEY", "SERP_PROVIDER",
+              "TELEGRAM_BOT_TOKEN", "SLACK_WEBHOOK_URL",
               "NTFY_URL", "SMTP_HOST", "LLM_PROVIDER", "OPENAI_API_KEY", "OPENAI_BASE_URL",
               "OPENAI_MODEL"):
     os.environ[_key] = ""

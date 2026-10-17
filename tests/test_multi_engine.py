@@ -24,6 +24,7 @@ from apify.client import ApifyError
 from apify.runner import ApifyRunner
 from config.apify_config import BING_SEARCH_SCRAPER, GOOGLE_SEARCH_SCRAPER
 from report.multi_country import persist_engine_run, run_multi_country
+from serp.base import SerpProviderError
 
 SUMMARY = {"total": 1, "positive": 0, "negative": 0, "neutral": 1}
 
@@ -396,7 +397,7 @@ def test_search_unknown_engine_filtered_with_warning():
 def test_search_unconfigured_engine_only_raises_readable_error():
     r = ApifyRunner(client=_MultiEngineFakeClient({}))
 
-    with pytest.raises(ApifyError) as exc_info:
+    with pytest.raises(SerpProviderError) as exc_info:
         r.search(["q"], country_code="us", engines=["news"])
 
     # PONYTAIL (#9): imports the shared constant instead of repeating the
@@ -459,7 +460,7 @@ def test_search_multi_engine_all_fail_chains_last_exception_as_cause():
     })
     r = ApifyRunner(client=client)
 
-    with pytest.raises(ApifyError) as exc_info:
+    with pytest.raises(SerpProviderError) as exc_info:
         r.search(["q"], country_code="us", engines=["google", "bing"])
 
     # last_exc is the one from the LAST engine processed in order (bing, the 2nd).

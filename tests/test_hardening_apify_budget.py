@@ -2,7 +2,8 @@
 evaluated AFTER saving the run -- the spend had already happened. This
 file covers the new pre-flight in ApifyRunner.search: if the runner is
 built with `db` and the monthly budget is already exceeded, search()
-raises ApifyError BEFORE launching any actor.
+raises SerpProviderError BEFORE launching any actor (every provider's
+spend counts, see serp.runner.SerpRunner._check_budget).
 
 TDD, no network: same pattern as tests/test_apify_costs.py (_FakeClient
 stub, never touches real Apify) -- here it's enough that
@@ -11,8 +12,8 @@ start_actor/wait_for_run are NEVER called when the pre-flight cuts it off.
 import pytest
 from conftest import make_db as _db
 
-from apify.client import ApifyError
 from apify.runner import ApifyRunner
+from serp.base import SerpProviderError
 
 
 class _FakeClient:
@@ -57,7 +58,7 @@ def test_search_preflight_blocks_when_budget_already_exceeded(tmp_path):
     client = _FakeClient()
     runner = ApifyRunner(client=client, db=db)
 
-    with pytest.raises(ApifyError, match=r"budget"):
+    with pytest.raises(SerpProviderError, match=r"budget"):
         runner.search(["q"], country_code="us")
 
     assert client.start_calls == 0  # it never got to launch the actor

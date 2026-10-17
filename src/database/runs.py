@@ -1,23 +1,25 @@
-"""Runs query mixin: execution runs, Apify costs, and run metadata."""
+"""Runs query mixin: execution runs, SERP provider costs, and run metadata."""
 import json
 from datetime import UTC, datetime
 
 from database.base import DEFAULT_SUBJECT_ID
 from processing.alert_types import normalize_severity
 
-# The Apify budget alert is deployment-wide (one Apify account for every
+# The SERP budget alert is deployment-wide (one provider account for every
 # subject): one row a month, stored under the default subject. Settings →
-# Search and every subject's alerts popover show it.
+# Search and every subject's alerts popover show it. Its kind stays
+# `apify_budget` (renaming alert kinds would break stored rows and the
+# routing table); its text says "SERP" and it counts every provider.
 BUDGET_ALERT_SUBJECT_ID = DEFAULT_SUBJECT_ID
 
 
 def budget_alert_key(month: str) -> str:
-    """Dedupe key of the `apify_budget` alert for a 'YYYY-MM' month."""
+    """Dedupe key of the `apify_budget` (SERP budget) alert for a 'YYYY-MM' month."""
     return f"apify_budget:{month}"
 
 
 class RunsMixin:
-    """Queries and mutations for search execution runs and Apify costs."""
+    """Queries and mutations for search execution runs and SERP costs."""
 
     def save_run(
         self,
@@ -32,13 +34,18 @@ class RunsMixin:
         engine: str = "google",
         device: str = "desktop",
         subject_id: int | None = None,
+        provider: str = "apify",
     ) -> dict | None:
         """Inserts (or updates) a run's metadata row.
 
-        cost_usd/compute_units (1.4) come from Apify's final run object
-        (usageTotalUsd/stats.computeUnits); they're left NULL if the actor doesn't
-        report them. If a known cost is saved, it checks the month's accumulated
-        spend against the configured budget (see _check_apify_budget).
+        cost_usd/compute_units (1.4) come from the provider (Apify's final
+        run object usageTotalUsd/stats.computeUnits; Serper's credits × rate);
+        they're left NULL if unknown. If a known cost is saved, it checks the
+        month's accumulated spend (every provider) against the configured
+        budget (see _check_serp_budget).
+
+        provider (issue #3): which SERP provider ran it ('apify' default for
+        legacy callers) -- see serp.runner.SerpRunner engine_runs["provider"].
 
         Returns the newly inserted `apify_budget` alert row (FIX 1
         point 4, silent-alerts audit) if the budget was just
@@ -74,8 +81,8 @@ class RunsMixin:
             INSERT INTO runs
                 (apify_run_id, queries, country_code, status,
                  total_results, positive, negative, neutral, created_at,
-                 cost_usd, compute_units, retries, engine, device, subject_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cost_usd, compute_units, retries, engine, device, subject_id, provider)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(apify_run_id) DO UPDATE SET
                 status=excluded.status,
                 total_results=excluded.total_results,
@@ -86,7 +93,8 @@ class RunsMixin:
                 compute_units=COALESCE(excluded.compute_units, compute_units),
                 retries=MAX(excluded.retries, retries),
                 engine=COALESCE(excluded.engine, engine),
-                device=COALESCE(excluded.device, device)
+                device=COALESCE(excluded.device, device),
+                provider=COALESCE(excluded.provider, provider)
             """,
             (
                 apify_run_id,
@@ -104,20 +112,22 @@ class RunsMixin:
                 engine,
                 device,
                 subject_id,
+                provider or "apify",
             ),
         )
         conn.commit()
         conn.close()
         if cost_usd is not None:
-            return self._check_apify_budget()
+            return self._check_serp_budget()
         return None
 
     # ------------------------------------------------------------------ #
-    # Apify costs (1.4)
+    # SERP provider costs (1.4; every provider since issue #3)
     # ------------------------------------------------------------------ #
-    def apify_month_cost(self) -> dict[str, float]:
-        """Accumulated Apify spend for the current UTC month: sum of cost_usd,
-        count of runs with a known cost, and sum of compute_units.
+    def serp_month_cost(self) -> dict:
+        """Accumulated SERP spend for the current UTC month, EVERY provider:
+        sum of cost_usd, count of runs with a known cost, sum of
+        compute_units (Apify only), and `by_provider` (provider -> cost_usd).
 
         1.1 (review LOW #7): with "one DB run per engine" (see
         apify.runner.ApifyRunner.search::engine_runs), `runs` can have
@@ -134,8 +144,18 @@ class RunsMixin:
             (month_prefix + "%",),
         )
         cost_usd, n_runs, compute_units = cur.fetchone()
+        cur.execute(
+            "SELECT COALESCE(provider, 'apify'), COALESCE(SUM(cost_usd), 0) FROM runs "
+            "WHERE created_at LIKE ? AND cost_usd IS NOT NULL GROUP BY 1",
+            (month_prefix + "%",),
+        )
+        by_provider = {name: cost for name, cost in cur.fetchall()}
         conn.close()
-        return {"cost_usd": cost_usd, "runs": n_runs, "compute_units": compute_units}
+        return {"cost_usd": cost_usd, "runs": n_runs, "compute_units": compute_units,
+                "by_provider": by_provider}
+
+    # Pre-issue-#3 name, still used by callers and tests.
+    apify_month_cost = serp_month_cost
 
     def add_run_cost(self, apify_run_id: str, cost_usd: float | None,
                       compute_units: float | None) -> dict | None:
@@ -170,7 +190,7 @@ class RunsMixin:
         conn.commit()
         conn.close()
         if cost_usd is not None:
-            return self._check_apify_budget()
+            return self._check_serp_budget()
         return None
 
     def current_budget_alert(self) -> dict | None:
@@ -179,10 +199,12 @@ class RunsMixin:
         month = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m")
         return self.deployment_alert(budget_alert_key(month))
 
-    def _check_apify_budget(self) -> dict | None:
+    def _check_serp_budget(self) -> dict | None:
         """If a monthly budget is configured (>0) and the month's accumulated
-        spend exceeds it, creates the `apify_budget` alert (deduped per month:
-        only once a month even if several more runs go over).
+        spend (every provider) exceeds it, creates the `apify_budget` alert
+        (deduped per month: only once a month even if several more runs go
+        over). The setting key (apify_monthly_budget) and the alert kind
+        keep their pre-#3 names: stored rows depend on them.
 
         FIX 1 point 4 (silent-alerts audit): this module CANNOT
         import notify.dispatcher.emit_alert (cycle: notify -> processing
@@ -200,18 +222,18 @@ class RunsMixin:
             budget = 0.0
         if budget <= 0:
             return None
-        spent = self.apify_month_cost()["cost_usd"]
+        spent = self.serp_month_cost()["cost_usd"]
         if spent <= budget:
             return None
         month = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m")
         key = budget_alert_key(month)
-        # Deployment-wide: the budget is the whole deployment's Apify bill, so
+        # Deployment-wide: the budget is the whole deployment's SERP bill, so
         # the alert fires ONCE a month whichever subject's run crossed it
         # (dedupe across every subject and status, not the per-subject unique
         # index) and is stored under subject 1 (BUDGET_ALERT_SUBJECT_ID).
         if self.deployment_alert(key) is not None:
             return None
-        msg = f"Apify monthly spend ${spent:.2f} exceeds budget ${budget:.2f}"
+        msg = f"SERP monthly spend ${spent:.2f} exceeds budget ${budget:.2f}"
         severity = normalize_severity("apify_budget", "high")
         alert_id = self.add_alert("apify_budget", "high", "", msg, key,
                                   subject_id=BUDGET_ALERT_SUBJECT_ID)
@@ -219,6 +241,9 @@ class RunsMixin:
             return None
         return {"id": alert_id, "kind": "apify_budget", "severity": severity,
                 "country": "", "message": msg, "subject_id": BUDGET_ALERT_SUBJECT_ID}
+
+    # Pre-issue-#3 name (tests/test_dispatch_guard names it).
+    _check_apify_budget = _check_serp_budget
 
 
     @staticmethod
