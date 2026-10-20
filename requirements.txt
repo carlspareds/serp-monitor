@@ -1,10 +1,10 @@
 # --- Core ---
 requests==2.34.2
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 
 # --- Dashboard web (FastAPI) ---
-fastapi==0.141.1
-uvicorn[standard]==0.53.0
+fastapi==0.143.3
+uvicorn[standard]==0.54.0
 jinja2==3.1.6
 python-multipart==0.0.32
 
@@ -21,4 +21,4 @@ reportlab==5.0.1
 apscheduler==3.11.3
 # Not imported directly: required by APScheduler's SQLAlchemyJobStore
 # (scheduler/core.py), which APScheduler does not install by itself.
-sqlalchemy==2.0.54
+sqlalchemy==2.1.5
