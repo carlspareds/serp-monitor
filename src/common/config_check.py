@@ -564,6 +564,10 @@ def validate_on_startup(logger: logging.Logger | None = None,
             log.error(text)
             raise ConfigError(text)
         return report
+    if report.errors:
+        text = format_errors(report, env)
+        log.error(text, extra={"config_errors": [f.key for f in report.errors]})
+        raise ConfigError(text)
     if report.warnings:
         log.warning(_scrub("config: " + "; ".join(f"{f.key}: {f.message}"
                                                     for f in report.warnings), env))
