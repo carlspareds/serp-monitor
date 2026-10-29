@@ -60,9 +60,10 @@ async def auth_middleware(request: Request, call_next):
 # run too (role/auth middlewares still guard them exactly as on /settings).
 SETUP_DIALOG_PREFIXES = ("/ui/integration/", "/settings/integration/")
 SETUP_DIALOG_POSTS = frozenset({
-    "/settings/apikey", "/settings/ai", "/settings/email", "/settings/notify",
-    "/settings/secret/remove", "/settings/ai-test", "/settings/apify-test",
-    "/settings/email-test", "/settings/notify-test",
+    "/settings/apikey", "/settings/serper-key", "/settings/ai", "/settings/email",
+    "/settings/notify", "/settings/secret/remove", "/settings/ai-test",
+    "/settings/apify-test", "/settings/serp-test", "/settings/email-test",
+    "/settings/notify-test",
 })
 
 

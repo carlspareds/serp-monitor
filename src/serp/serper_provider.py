@@ -16,6 +16,7 @@ set it to your pack's rate), since Serper never reports dollars.
 """
 from __future__ import annotations
 
+import math
 import os
 import time
 import uuid
@@ -49,7 +50,7 @@ def usd_per_1k_setting(env=None) -> float:
         value = float(raw) if raw else DEFAULT_USD_PER_1K
     except ValueError:
         return DEFAULT_USD_PER_1K
-    return value if value >= 0 else DEFAULT_USD_PER_1K
+    return value if math.isfinite(value) and value >= 0 else DEFAULT_USD_PER_1K
 
 
 def _text(v: Any) -> str:
