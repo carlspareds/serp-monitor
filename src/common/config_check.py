@@ -238,15 +238,15 @@ def _check_https(env, r: Report) -> None:
               "and set FORCE_HTTPS=1")
 
 
-def _env_file_path(env, cwd: Path) -> Path:
-    """ENV_FILE resolved against cwd, else cwd/.env (== DEFAULT_ENV_FILE when
-    run from the project root; a check run elsewhere never reads the repo's)."""
+def _env_file_path(env, cwd: Path, default: Path) -> Path:
+    """ENV_FILE resolved against cwd, else `default`: the repo .env the app
+    loads (DEFAULT_ENV_FILE), or cwd/.env when the caller passed a cwd."""
     raw = _get(env, "ENV_FILE")
-    return _resolve(raw or ".env", cwd)
+    return _resolve(raw, cwd) if raw else default
 
 
-def _check_env_permissions(env, r: Report, cwd: Path) -> None:
-    path = _env_file_path(env, cwd)
+def _check_env_permissions(env, r: Report, cwd: Path, default: Path) -> None:
+    path = _env_file_path(env, cwd, default)
     try:
         if not path.is_file() or os.name != "posix":
             return
@@ -472,6 +472,9 @@ def _check_misc(env, r: Report) -> None:
 def check_config(env: Mapping[str, str] | None = None, cwd: Path | None = None) -> Report:
     """Run every check against `env` (default: os.environ). Pure: no writes."""
     env = os.environ if env is None else env
+    # No cwd: check the .env the app actually loads (load_dotenv_like_app),
+    # wherever the check runs from. An explicit cwd (tests) never reads it.
+    default_env = DEFAULT_ENV_FILE if cwd is None else cwd / ".env"
     cwd = Path.cwd() if cwd is None else cwd
     r = Report()
     if _get(env, "SKIP_CONFIG_CHECK") not in ("", "0"):
@@ -482,7 +485,7 @@ def check_config(env: Mapping[str, str] | None = None, cwd: Path | None = None) 
     _check_https(env, r)
     _check_db(env, r, cwd)
     _check_env_file(env, r, cwd)
-    _check_env_permissions(env, r, cwd)
+    _check_env_permissions(env, r, cwd, default_env)
     _check_encryption(env, r)
     _check_apify(env, r)
     _check_ai(env, r)
@@ -561,10 +564,6 @@ def validate_on_startup(logger: logging.Logger | None = None,
             log.error(text)
             raise ConfigError(text)
         return report
-    if report.errors:
-        text = format_errors(report, env)
-        log.error(text, extra={"config_errors": [f.key for f in report.errors]})
-        raise ConfigError(text)
     if report.warnings:
         log.warning(_scrub("config: " + "; ".join(f"{f.key}: {f.message}"
                                                     for f in report.warnings), env))
