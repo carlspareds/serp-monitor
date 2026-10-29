@@ -185,6 +185,41 @@ def test_env_file_missing_but_creatable_is_a_warning(tmp_path):
     assert report.ok and "ENV_FILE" in {f.key for f in report.warnings}
 
 
+def test_default_env_file_world_readable_warns(tmp_path):
+    """ENV_FILE unset: the .env next to cwd is the one whose mode is checked."""
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("APIFY_API_KEY=x\n")
+    dotenv.chmod(0o664)
+    report = cc.check_config(_demo_env(tmp_path), cwd=tmp_path)
+    found = [f for f in report.warnings if f.key == ".env"]
+    assert len(found) == 1
+    assert "mode 664" in found[0].message and str(dotenv) in found[0].fix
+
+
+def test_default_env_file_is_cwd_not_repo(tmp_path, tmp_path_factory, monkeypatch):
+    """No .env in cwd -> no .env finding, even when the repo's own .env (the
+    module default) is world-readable (issue #31)."""
+    elsewhere = tmp_path_factory.mktemp("repo") / ".env"
+    elsewhere.write_text("APIFY_API_KEY=x\n")
+    elsewhere.chmod(0o664)
+    monkeypatch.setattr(cc, "DEFAULT_ENV_FILE", elsewhere)
+    report = cc.check_config(_demo_env(tmp_path), cwd=tmp_path)
+    assert ".env" not in {f.key for f in report.findings}
+
+
+def test_env_file_relative_resolves_against_cwd(tmp_path):
+    (tmp_path / "conf").mkdir()
+    target = tmp_path / "conf" / "app.env"
+    target.write_text("APIFY_API_KEY=x\n")
+    target.chmod(0o664)
+    env = _demo_env(tmp_path)
+    env["ENV_FILE"] = "conf/app.env"
+    report = cc.check_config(env, cwd=tmp_path)
+    found = [f for f in report.warnings if f.key == "ENV_FILE"]
+    assert len(found) == 1
+    assert "mode 664" in found[0].message and str(target) in found[0].fix
+
+
 def test_gemini_model_without_key_warns_only_if_non_default(tmp_path):
     env = _demo_env(tmp_path)
     assert "GEMINI_MODEL" not in {f.key for f in cc.check_config(env, cwd=tmp_path).warnings}
