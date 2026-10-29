@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Config check: with `ENV_FILE` unset and an explicit `cwd`, the `.env`
+  permission check inspects `cwd/.env` instead of the repo's `.env`, so
+  `check_config(env, cwd=...)` no longer depends on the developer's real
+  file (#31). Without a `cwd` (startup, `make check`) it still checks the
+  repo `.env` the app loads, wherever it runs from.
+
 ## [1.0.0] - 2026-10-16
 
 First public release. The code was extracted from a larger private tool,
