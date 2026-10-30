@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Database.serp_month_cost()` with a per-provider breakdown.
 - The SERP-parsing eval also runs over a synthetic Serper.dev payload
   (`evals/fixtures/serper_google_us.json`).
+- `AGENTS.md` (where code lives, commands, contribution rules) and a feature
+  map in `docs/verification/` for checking Review, Compare, Reports,
+  Evidence and Notes in an isolated demo instance. Only Review has a tested
+  walkthrough so far.
 
 ### Changed
 
