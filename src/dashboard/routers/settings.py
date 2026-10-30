@@ -30,6 +30,7 @@ when nothing changed, and a rejected value comes back as a readable
 secret field left empty always means "keep the saved value"; secrets are
 never shown again, audited or logged.
 """
+import math
 import os
 
 from fastapi import APIRouter, Form, Request
@@ -891,19 +892,20 @@ async def save_serper_key(request: Request, serper_key: str = Form("", max_lengt
     exactly like the Apify token: written to the env file, verified
     afterwards, kept even when the check fails."""
     import dashboard.main as main_module
-    from serp.serper_provider import DEFAULT_USD_PER_1K
+    from serp.serper_provider import usd_per_1k_setting
     next_url = _next(next, "search")
     key = (serper_key or "").strip()
     rate = (usd_per_1k or "").strip()
     pairs = []
     if rate:
         try:
-            if float(rate) < 0:
+            value = float(rate)
+            if not math.isfinite(value) or value < 0:
                 raise ValueError
         except ValueError:
             return _reject("serper", next_url, "the price per 1,000 credits must be a number "
                                                "(e.g. 1.00).", {"usd_per_1k": rate})
-        if float(rate) != float(os.getenv("SERPER_USD_PER_1K") or DEFAULT_USD_PER_1K):
+        if value != usd_per_1k_setting():
             pairs.append(("SERPER_USD_PER_1K", rate))
     if not key:
         if not os.getenv("SERPER_API_KEY"):

@@ -601,6 +601,20 @@ def test_serper_price_change_alone_reaches_the_next_search(client, env_file, mon
     assert main_module.get_runner().provider.usd_per_1k == pytest.approx(0.5)
 
 
+def test_serper_price_rejects_non_finite_and_survives_a_bad_env_value(client, env_file, monkeypatch):
+    monkeypatch.setenv("SERPER_API_KEY", "s-1")
+    for bad in ("nan", "inf", "-1", "abc"):
+        r = client.post("/settings/serper-key", data={"serper_key": "", "usd_per_1k": bad},
+                        follow_redirects=True)
+        assert "must be a number" in r.text and os.getenv("SERPER_USD_PER_1K") == "", bad
+    # A hand-written non-number in .env must not turn the form into a 500.
+    monkeypatch.setenv("SERPER_USD_PER_1K", "oops")
+    r = client.post("/settings/serper-key", data={"serper_key": "", "usd_per_1k": "0.5"},
+                    follow_redirects=True)
+    assert r.status_code == 200 and "Price saved" in r.text
+    assert os.getenv("SERPER_USD_PER_1K") == "0.5"
+
+
 def test_settings_provider_choice_round_trip(client, env_file):
     import dashboard.main as main_module
 
