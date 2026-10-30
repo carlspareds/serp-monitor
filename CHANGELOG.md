@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AGENTS.md` (where code lives, commands, contribution rules) and a feature
+  map in `docs/verification/` for checking Review, Compare, Reports,
+  Evidence and Notes in an isolated demo instance. Only Review has a tested
+  walkthrough so far.
+
 ### Fixed
 
 - Config check: with `ENV_FILE` unset and an explicit `cwd`, the `.env`
