@@ -910,6 +910,7 @@ async def save_serper_key(request: Request, serper_key: str = Form("", max_lengt
             return _reject("serper", next_url, "paste your Serper.dev key first.")
         if pairs:
             integ.write_env(pairs)
+            main_module._runner = None   # the cached provider holds the old rate
             audit(request, "settings_serper_key_save", field="SERPER_USD_PER_1K")
             return redirect_with_flash(next_url, "Price saved. The saved Serper.dev key was kept.")
         return redirect_with_flash(next_url, "No changes. The saved Serper.dev key was kept.", "info")
