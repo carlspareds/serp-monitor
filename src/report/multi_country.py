@@ -23,9 +23,6 @@ import inspect
 import logging
 from collections.abc import Callable
 
-from apify.actors import ENGINE_NOT_CONFIGURED_MSG
-from apify.client import ApifyError
-from apify.runner import ApifyRunner
 from config.apify_config import lang_for
 from notify.dispatcher import notify_alert
 from processing import ai_status, llm
@@ -34,6 +31,8 @@ from processing.enrich import annotate_same_person
 from processing.evidence import capture_new_negatives
 from processing.lifecycle import update_url_lifecycle
 from processing.severity import annotate_severity
+from serp.base import ENGINE_NOT_CONFIGURED_MSG, SerpProviderError
+from serp.runner import SerpRunner
 
 log = logging.getLogger("search")
 
@@ -146,6 +145,7 @@ def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: 
         retries=engine_run.get("retries", 0),
         engine=engine_run.get("engine", "google"),
         device=engine_run.get("device", "desktop"),
+        provider=engine_run.get("provider") or "apify",
     )
     if budget_alert:
         notify_alert(db, budget_alert)
@@ -169,7 +169,7 @@ def _persist_engine_run(db, engine_run: dict, results: list[dict], ai_failures: 
 
 
 def run_multi_country(
-    runner: ApifyRunner,
+    runner: SerpRunner,
     db,
     query: str,
     countries: list[str],
@@ -270,7 +270,7 @@ def run_multi_country(
                     "new_negatives": new_negatives,
                 }
             )
-        except ApifyError as e:
+        except SerpProviderError as e:
             outcomes.append(
                 {"country": country, "run_id": None, "status": "ERROR",
                  "summary": {}, "error": str(e)}

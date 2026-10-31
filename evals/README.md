@@ -13,7 +13,7 @@ This prints a report and writes `evals/results.json`.
 
 | Metric | Data | Result |
 | --- | --- | --- |
-| SERP parsing accuracy | 4 synthetic actor payloads | 100% |
+| SERP parsing accuracy | 7 synthetic provider payloads (Apify google/bing, Serper.dev google) | 100% |
 | Classification accuracy | 11 synthetic cases | 100% (circular, see below) |
 | Classification accuracy | 53 real results, LLM-labeled | **45.28%: predicts "neutral" for all 53, the same as always answering "neutral"** |
 | Alert-rule correctness | 3 scenarios on a temp SQLite DB | 3/3 |
@@ -21,12 +21,16 @@ This prints a report and writes `evals/results.json`.
 
 ## What's measured
 
-- **SERP parsing accuracy.** Does `apify.actors.normalize_google` /
-  `normalize_bing` correctly extract url/position/title/domain from a raw
-  Apify actor payload? This includes Bing's breadcrumb-vs-redirector edge
-  case: Bing's actor exposes the real URL as a `displayedUrl` breadcrumb
-  and the raw `url` field as a tracking redirector (see
-  `src/apify/actors.py::_bing_real_url`).
+- **SERP parsing accuracy.** Does each provider's normalizer
+  (`apify.actors.normalize_google` / `normalize_bing`,
+  `serp.serper_provider.normalize_serper`) correctly extract
+  url/position/title/domain from a raw payload? This includes Bing's
+  breadcrumb-vs-redirector edge case: Bing's actor exposes the real URL as
+  a `displayedUrl` breadcrumb and the raw `url` field as a tracking
+  redirector (see `src/apify/actors.py::_bing_real_url`), and, for
+  Serper.dev, a synthetic payload (`evals/fixtures/serper_google_us.json`,
+  fictional names, `.example` domains) with tracking parameters, a
+  trailing slash, a fragment and a row without a link.
 - **Classification accuracy (synthetic).** Precision/recall/F1 per class
   for the rule-based classifier (`src/processing/classifier.py`, the same
   one used at search time) against 11 labeled synthetic cases. The cases

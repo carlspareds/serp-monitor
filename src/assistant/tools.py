@@ -685,7 +685,10 @@ def get_setup_status(ctx: ToolContext, args: dict) -> dict:
     channels = channel_status(db)
     routed = routed_severities(db)
     subject = db.current_subject()
+    from serp.registry import active_provider_name
+
     apify = bool(os.getenv("APIFY_API_KEY"))
+    serp_provider = active_provider_name()
     try:
         budget = float(db.get_setting("apify_monthly_budget", "0") or 0)
     except ValueError:
@@ -699,8 +702,9 @@ def get_setup_status(ctx: ToolContext, args: dict) -> dict:
     except Exception:
         log.exception("assistant_setup_jobs_failed")
     missing = []
-    if not apify:
-        missing.append("Apify API key (real searches): Settings → Search, or the Setup wizard.")
+    if not serp_provider:
+        missing.append("SERP provider key, Apify or Serper.dev (real searches): Settings → Search, "
+                       "or the Setup wizard.")
     if not info["configured"]:
         missing.append("AI provider: Settings → AI provider.")
     if not any(channels.values()):
@@ -715,7 +719,10 @@ def get_setup_status(ctx: ToolContext, args: dict) -> dict:
                        "Settings → Projects and subjects → Domains.")
     return {
         "subject": {"name": subject["name"], "query": subject["query"], "countries": subject["countries"]},
-        "apify": {"configured": apify, "demo_mode": not apify,
+        # "apify" kept as the key name for the assistant's prompts; `provider`
+        # says which SERP provider is active (issue #3).
+        "apify": {"configured": bool(serp_provider), "demo_mode": not serp_provider,
+                  "provider": serp_provider, "apify_key": apify,
                   "month_spend_usd": round(float(spend.get("cost_usd") or 0), 2),
                   "monthly_budget_usd": budget or None},
         "ai_provider": {"configured": info["configured"], "provider": info["provider"],
@@ -822,9 +829,10 @@ def open_result(ctx: ToolContext, args: dict) -> dict:
 # ACTION tools: prepare (validation + confirmation card) / execute
 # --------------------------------------------------------------------- #
 def _countries_engines(ctx: ToolContext, args: dict) -> tuple[list[str], list[str]]:
-    from apify.actors import CONFIGURED_ENGINES
     from dashboard.ui_helpers import COUNTRIES
+    from serp.registry import configured_engines
 
+    CONFIGURED_ENGINES = configured_engines()
     subject = ctx.db.current_subject()
     countries = [c.lower() for c in (args.get("countries") or subject["countries"] or ["us"])]
     bad = [c for c in countries if c not in COUNTRIES]
@@ -847,10 +855,11 @@ def _avg_run_cost(db) -> tuple[float, bool]:
 
 def prepare_start_search(ctx: ToolContext, args: dict) -> dict:
     from dashboard.jobs import _MAX_CONCURRENT_JOBS
+    from serp.registry import active_provider_name, provider_label
 
-    if not os.getenv("APIFY_API_KEY"):
-        raise ToolError("Searches can't run: no Apify API key is configured (demo mode). "
-                        "An admin can add it in Settings → Search.")
+    if not active_provider_name():
+        raise ToolError("Searches can't run: no SERP provider key (Apify or Serper.dev) is "
+                        "configured (demo mode). An admin can add one in Settings → Search.")
     query = ctx.db.current_subject().get("query") or ""
     if not query:
         raise ToolError("This subject has no tracked name yet (Settings → Projects and subjects → Edit).")
@@ -862,7 +871,8 @@ def prepare_start_search(ctx: ToolContext, args: dict) -> dict:
     per_run, measured = _avg_run_cost(ctx.db)
     lo, hi = 20 * n, 90 * n
     time_note = f"{lo}-{hi} seconds" if hi < 180 else f"{lo // 60 or 1}-{hi // 60} minutes"
-    cost_note = (f"Uses your Apify plan: {run_cost_phrase(per_run, n * pages)} ({n} run(s)"
+    cost_note = (f"Uses your {provider_label(active_provider_name())} plan: "
+                 f"{run_cost_phrase(per_run, n * pages)} ({n} run(s)"
                  + ("" if measured else ", rough estimate") + f"). Takes about {time_note}.")
     try:
         budget = float(ctx.db.get_setting("apify_monthly_budget", "0") or 0)
@@ -872,7 +882,9 @@ def prepare_start_search(ctx: ToolContext, args: dict) -> dict:
         spent = float(ctx.db.apify_month_cost().get("cost_usd") or 0)
         cost_note += f" This month: ${spent:.2f} of your ${budget:.2f} budget."
     device = args.get("device", "desktop")
-    from apify.actors import CONFIGURED_ENGINES
+    from serp.registry import configured_engines
+
+    CONFIGURED_ENGINES = configured_engines()
 
     subject_countries = [c.lower() for c in (ctx.db.current_subject().get("countries") or [])]
     country_opts = list(dict.fromkeys(subject_countries + countries))

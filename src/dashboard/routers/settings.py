@@ -2,7 +2,7 @@
 
   #projects       Projects and subjects     (operators and admins edit); the
                   active subject's Domains live inside it (<details id='domains'>)
-  #search         Search (Apify), monthly budget, results review
+  #search         Search providers (Apify, Serper.dev), monthly SERP budget, results review
   #ai             AI provider
   #notifications  Channels, alert routing and threshold, recent deliveries
   #scheduling     Scheduled jobs
@@ -30,6 +30,7 @@ when nothing changed, and a rejected value comes back as a readable
 secret field left empty always means "keep the saved value"; secrets are
 never shown again, audited or logged.
 """
+import math
 import os
 
 from fastapi import APIRouter, Form, Request
@@ -184,7 +185,7 @@ def _form_row(*fields: str) -> str:
 # Sections
 # --------------------------------------------------------------------- #
 def _budget_alert_note() -> str:
-    """This month's deployment-wide Apify budget alert, if one was raised."""
+    """This month's deployment-wide SERP budget alert, if one was raised."""
     alert = db.current_budget_alert()
     if alert is None:
         return ""
@@ -212,29 +213,68 @@ def _integration_card(name: str, more: str = "", body_extra: str = "") -> str:
                               integ.setup_button(name, _back(integ.SECTION_OF[name]), st), more)
 
 
+def _provider_card() -> str:
+    """Settings → Search → Provider: which SERP provider searches run
+    through (serp.registry): Auto picks Apify, else Serper.dev, by key."""
+    from serp.registry import LABELS, active_provider_name, requested_provider
+    chosen, active = requested_provider(), active_provider_name()
+    options = "".join(
+        f"<option value='{value}'{' selected' if value == chosen else ''}>{label}</option>"
+        for value, label in (("", "Auto (Apify if its key is set, else Serper.dev)"),
+                             *((name, LABELS[name]) for name in LABELS)))
+    if active:
+        status = f"Searches run through <b>{_esc(LABELS[active])}</b>" + \
+                 ("." if chosen else " (chosen automatically).")
+        pill = integ.pill("ok", LABELS[active])
+    elif chosen:
+        status = (f"<b>{_esc(LABELS[chosen])}</b> is chosen but its key isn't saved: searches "
+                  "can't run. Add the key above or pick another provider.")
+        pill = integ.pill("warn", "Key missing")
+    else:
+        status = "No provider key saved yet: searches can't run (demo data only)."
+        pill = integ.pill("warn", "Not set up")
+    body = (f"<p class='note' data-serp-provider='{_esc(active)}'>{status}</p>"
+            "<form id='provider-form' action='/settings/serp-provider' method='post' class='row'>"
+            + integ.field("Search through",
+                          f"<select id='st-provider' name='provider'>{options}</select>",
+                          "Apify: Google desktop and mobile, Bing. Serper.dev: Google desktop only, "
+                          "cheaper and faster. Both keys can stay saved; this picks the one used.",
+                          "st-provider", cls="w-lg")
+            + "</form>")
+    return integ.section_card(
+        "Provider", "Which SERP provider runs the searches. Each one has its own key above.",
+        body, pill, "<button type='submit' form='provider-form' class='btn small'>Save provider</button>")
+
+
 def _search_cards() -> str:
-    spend = db.apify_month_cost()
+    from serp.registry import LABELS
+    spend = db.serp_month_cost()
     budget = float(db.get_setting("apify_monthly_budget", "0") or 0)
     review_threshold = db.review_threshold()
     pending = db.count_pending_review()
     gone = _gone_after_runs(db)
-    apify = _integration_card("apify")
+    providers = _integration_card("apify") + _integration_card("serper") + _provider_card()
     budget_pill = (integ.pill("info", f"${budget:.2f} a month") if budget
                    else integ.pill("neutral", "Off"))
+    by_provider = ", ".join(f"{LABELS.get(name, name)} ${cost:.2f}"
+                            for name, cost in sorted(spend.get("by_provider", {}).items()))
     budget_body = (
         f"<p class='note'>Spend this month: <b>${spend['cost_usd']:.2f}</b> "
-        f"({plural(spend['runs'], 'run')}, {spend['compute_units']:.2f} compute units).</p>"
+        f"({plural(spend['runs'], 'run')}"
+        + (f", {spend['compute_units']:.2f} compute units" if spend["compute_units"] else "")
+        + (f"; {by_provider}" if by_provider else "") + ").</p>"
         "<form id='budget-form' action='/settings/apify-budget' method='post' class='row'>"
-        + integ.field("Alert me when this month's spend reaches (USD)",
+        + integ.field("Monthly SERP budget (USD): alert me when this month's spend reaches",
                       f"<input id='st-budget' type='number' name='budget' value='{budget:.2f}' "
                       "min='0' step='0.5' inputmode='decimal'>",
-                      "Example: 20 sends one alert when this month's Apify spend reaches $20. "
+                      "Example: 20 sends one alert when this month's search spend reaches $20, "
+                      "every provider counted (Serper.dev spend is an estimate from its credits). "
                       "0 turns the alert off.", "st-budget", cls="w-lg")
         + "</form>" + _budget_alert_note())
     budget_card = integ.section_card(
         "Monthly budget alert",
-        "One alert a month when the Apify spend reaches an amount. Every subject shares one "
-        "Apify account, so the budget covers all of them.",
+        "One alert a month when the SERP spend reaches an amount. Every subject shares the "
+        "provider accounts, so the budget covers all of them.",
         budget_body, budget_pill,
         "<button type='submit' form='budget-form' class='btn small'>Save budget</button>")
     review_body = (
@@ -258,7 +298,7 @@ def _search_cards() -> str:
         review_body, integ.pill("info" if pending else "neutral",
                                 f"{pending} waiting for review" if pending else "Nothing to review"),
         "<button type='submit' form='review-form' class='btn small'>Save</button>")
-    return apify + budget_card + review_card
+    return providers + budget_card + review_card
 
 
 def _ai_card() -> str:
@@ -548,7 +588,9 @@ def _overview(v) -> str:
     chips = []
     channels = channel_status(db)
     n = sum(1 for x in channels.values() if x)
-    for name, href in (("apify", "#search"), ("ai", "#ai")):
+    from serp.registry import active_provider_name
+    # One Search chip: the active SERP provider (Apify when none is set up yet).
+    for name, href in ((active_provider_name() or "apify", "#search"), ("ai", "#ai")):
         st = integ.integration_state(name)
         chips.append(f"<a class='ov-chip' href='{href}'><span>{_esc(integ.INFO[name]['short'])}</span>"
                      f"{integ.pill(st['state'], st['label'])}</a>")
@@ -803,14 +845,16 @@ async def save_review(request: Request, review_threshold: str = Form("", max_len
 
 
 def _verify_apify(apikey: str) -> tuple[bool, str]:
-    try:
-        res = ApifyClient(api_key=apikey).check_account()
-    except Exception as exc:  # noqa: BLE001 -- network/HTTP errors are reported, never raised
-        res = {"ok": False, "detail": str(exc)}
-    if res.get("ok"):
-        return True, f"key verified (user: {res.get('username')})"
+    from serp.apify_provider import ApifyProvider
+    ok, detail = ApifyProvider(client=ApifyClient(api_key=apikey)).check_credentials()
     # Plain reason only (same wording as /setup): never Apify's raw response body.
-    return False, f"{admin.apify_check_reason(res.get('detail') or '')}; it was saved anyway"
+    return ok, detail if ok else f"{detail}; it was saved anyway"
+
+
+def _verify_serper(key: str) -> tuple[bool, str]:
+    from serp.serper_provider import SerperProvider
+    ok, detail = SerperProvider(api_key=key).check_credentials()
+    return ok, detail if ok else f"{detail}; it was saved anyway"
 
 
 @router.post("/settings/apikey", tags=["settings"])
@@ -839,6 +883,73 @@ async def save_apikey(request: Request, apikey: str = Form("", max_length=1024),
     return redirect_with_flash(next_url,
                                "Apify token saved. " + _test_message("Apify check", ok, detail),
                                "ok" if ok else "error")
+
+
+@router.post("/settings/serper-key", tags=["settings"])
+async def save_serper_key(request: Request, serper_key: str = Form("", max_length=1024),
+                          usd_per_1k: str = Form("", max_length=32), next: str = Form("", max_length=2048)):
+    """Saves the Serper.dev key (and the price used to estimate its spend)
+    exactly like the Apify token: written to the env file, verified
+    afterwards, kept even when the check fails."""
+    import dashboard.main as main_module
+    from serp.serper_provider import usd_per_1k_setting
+    next_url = _next(next, "search")
+    key = (serper_key or "").strip()
+    rate = (usd_per_1k or "").strip()
+    pairs = []
+    if rate:
+        try:
+            value = float(rate)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError
+        except ValueError:
+            return _reject("serper", next_url, "the price per 1,000 credits must be a number "
+                                               "(e.g. 1.00).", {"usd_per_1k": rate})
+        if value != usd_per_1k_setting():
+            pairs.append(("SERPER_USD_PER_1K", rate))
+    if not key:
+        if not os.getenv("SERPER_API_KEY"):
+            return _reject("serper", next_url, "paste your Serper.dev key first.")
+        if pairs:
+            integ.write_env(pairs)
+            main_module._runner = None   # the cached provider holds the old rate
+            audit(request, "settings_serper_key_save", field="SERPER_USD_PER_1K")
+            return redirect_with_flash(next_url, "Price saved. The saved Serper.dev key was kept.")
+        return redirect_with_flash(next_url, "No changes. The saved Serper.dev key was kept.", "info")
+    if key == (os.getenv("SERPER_API_KEY") or "") and not pairs:
+        return redirect_with_flash(next_url, "No changes. That key is already saved.", "info")
+    if key != (os.getenv("SERPER_API_KEY") or ""):
+        pairs.append(("SERPER_API_KEY", key))
+    try:
+        admin.check_env_values(pairs)
+    except ValueError as exc:
+        return _reject("serper", next_url, str(exc))
+    integ.write_env(pairs)
+    main_module._runner = None
+    audit(request, "settings_serper_key_save", field=",".join(k for k, _v in pairs))
+    ok, detail = await run_in_threadpool(_verify_serper, key)
+    integration_health.record_current(db, "serper", ok, detail)
+    return redirect_with_flash(next_url,
+                               "Serper.dev key saved. " + _test_message("Serper.dev check", ok, detail),
+                               "ok" if ok else "error")
+
+
+@router.post("/settings/serp-provider", tags=["settings"])
+async def save_serp_provider(request: Request, provider: str = Form("", max_length=32)):
+    """Settings → Search → Provider: writes SERP_PROVIDER ('' = auto)."""
+    import dashboard.main as main_module
+    from serp.registry import LABELS
+    value = (provider or "").strip().lower()
+    if value and value not in LABELS:
+        return redirect_with_flash(_back("search"), "Not saved: Unknown provider.", "error")
+    if value == (os.getenv("SERP_PROVIDER") or "").strip().lower():
+        return redirect_with_flash(_back("search"), "No changes to the provider.", "info")
+    integ.write_env([("SERP_PROVIDER", value)])
+    main_module._runner = None
+    audit(request, "settings_serp_provider_save", provider=value or "auto")
+    return redirect_with_flash(_back("search"), "Provider saved: searches run through "
+                               + (LABELS[value] if value else "the first provider with a key (auto)")
+                               + ".")
 
 
 @router.post("/settings/api-keys", tags=["settings"])
@@ -888,18 +999,28 @@ async def revoke_api_key_route(request: Request, key_id: str = Form("", max_leng
     return redirect_with_flash(_back("api"), "API key revoked. Tools using it stop working now.")
 
 
+@router.post("/settings/serp-test", tags=["settings"])
 @router.post("/settings/apify-test", tags=["settings"])
-async def apify_test(request: Request, next: str = Form("", max_length=2048)):
+async def serp_test(request: Request, next: str = Form("", max_length=2048),
+                    provider: str = Form("", max_length=32)):
+    """Test of a SAVED provider key through its check_credentials(): the
+    named `provider` (each row's Test button), else the active one
+    (/settings/apify-test, the pre-#3 route, kept for bookmarks)."""
+    from serp.registry import LABELS, PROVIDERS
+    name = (provider or "").strip().lower()
     try:
-        res = _get_runner().client.check_account()
-        ok = bool(res["ok"])
-        detail = (f"connected (user: {res.get('username')})" if ok
-                  else admin.apify_check_reason(res.get("detail") or ""))
+        if name in PROVIDERS:
+            ok, detail = await run_in_threadpool(PROVIDERS[name]().check_credentials)
+        else:
+            runner = _get_runner()
+            name = runner.provider_name
+            ok, detail = await run_in_threadpool(runner.check_credentials)
     except Exception as e:  # noqa: BLE001
         ok, detail = False, admin.apify_check_reason(str(e))
-    _audit_test(request, "settings_apify_test", ok, detail)
-    integration_health.record_current(db, "apify", ok, detail)
-    return redirect_with_flash(_next(next, "search"), _test_message("Apify check", ok, detail),
+    name = name if name in PROVIDERS else "apify"
+    _audit_test(request, f"settings_{name}_test", ok, detail)
+    integration_health.record_current(db, name, ok, detail)
+    return redirect_with_flash(_next(next, "search"), _test_message(f"{LABELS[name]} check", ok, detail),
                                "ok" if ok else "error")
 
 

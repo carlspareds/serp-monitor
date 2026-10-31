@@ -4,12 +4,17 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from apify.actors import ACTORS, CONFIGURED_ENGINES, VALID_DEVICES
+from apify.actors import (  # noqa: F401 -- CONFIGURED_ENGINES kept: tests patch ui_helpers.CONFIGURED_ENGINES
+    ACTORS,
+    CONFIGURED_ENGINES,
+    VALID_DEVICES,
+)
 from config.positive_domains import merged_with
 from dashboard import nav
 from dashboard.deps import db
 from dashboard.session import auth_enabled, is_demo_mode
 from database.models import url_hash as _url_hash
+from serp.registry import configured_engines
 
 project_root = Path(__file__).resolve().parent.parent.parent
 
@@ -50,8 +55,10 @@ def _clamp_pages(pages) -> int:
 
 
 def _split_valid_engines(engines: list) -> tuple[list[str], list[str]]:
-    valid = [e for e in (engines or []) if e in CONFIGURED_ENGINES]
-    invalid = [e for e in (engines or []) if e not in CONFIGURED_ENGINES]
+    """Engines the ACTIVE provider can search (serp.registry) vs the rest."""
+    supported = configured_engines()
+    valid = [e for e in (engines or []) if e in supported]
+    invalid = [e for e in (engines or []) if e not in supported]
     return valid, invalid
 
 
@@ -425,8 +432,9 @@ def _results_table(results, sortable=False, sort_by="", order="", base_qs="", no
 
 def _engine_checkboxes() -> str:
     labels = ""
-    for engine, entry in ACTORS.items():
-        configured = bool(entry.get("id"))
+    supported = configured_engines()
+    for engine in ACTORS:
+        configured = engine in supported
         checked = " checked" if engine == "google" else ""
         disabled = "" if configured else " disabled"
         suffix = "" if configured else " (coming soon)"
@@ -461,7 +469,7 @@ def _search_forms_html() -> str:
     engine_checkboxes = _engine_checkboxes()
     device_radios = _device_radios()
     key_notice = (
-        "<div class='hint'><b>Needs an Apify key.</b> Add it in the "
+        "<div class='hint'><b>Needs a search provider key (Apify or Serper.dev).</b> Add it in the "
         "<a href='/setup'>setup wizard</a> or <a href='/settings#search'>Settings → Search</a>; "
         "until then searches will fail.</div>"
         if is_demo_mode() else ""

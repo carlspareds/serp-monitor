@@ -446,7 +446,7 @@ def test_search_modal_preselects_the_active_subject_and_lists_enabled_engines(cl
 def test_search_modal_without_apify_key_is_disabled_with_a_settings_link(client, monkeypatch):
     monkeypatch.delenv("APIFY_API_KEY", raising=False)
     text = client.get("/ui/search", headers=_FRAG).text
-    assert "Needs an Apify key" in text and "href='/settings#search'" in text
+    assert "Needs a search provider key" in text and "href='/settings#search'" in text
     assert "class='btn primary' data-busy-label='Starting…' disabled" in text
 
 

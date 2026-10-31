@@ -338,7 +338,7 @@ def test_action_executors(demo):
 
 def test_start_search_refused_in_demo_mode(demo, monkeypatch):
     monkeypatch.delenv("APIFY_API_KEY", raising=False)
-    with pytest.raises(tools.ToolError, match="Apify"):
+    with pytest.raises(tools.ToolError, match="Apify or Serper.dev"):
         tools.prepare_start_search(demo, {})
 
 

@@ -1,0 +1,21 @@
+{
+  "_note": "SYNTHETIC Serper.dev /search payload (shape as documented at serper.dev, fictional names, .example domains). Used by evals/run_evals.py::eval_serp_parsing and tests. Not a recording of a real response.",
+  "searchParameters": {"q": "Jordan Ashworth", "gl": "us", "hl": "en", "type": "search", "num": 10, "page": 1, "engine": "google"},
+  "knowledgeGraph": {
+    "title": "Jordan Ashworth",
+    "type": "Fictional person",
+    "description": "A made-up name used by the SERP Monitor demo data."
+  },
+  "organic": [
+    {"title": "Jordan Ashworth", "link": "https://www.jordanashworth.example/?utm_source=serp&srsltid=abc", "snippet": "Official site.", "position": 1,
+     "sitelinks": [{"title": "About", "link": "https://jordanashworth.example/about"}]},
+    {"title": "Jordan's Blog", "link": "https://jordan-ashworth.example/blog/", "snippet": "Personal blog.", "position": 2},
+    {"title": "Jordan Ashworth - Complaints", "link": "https://complaints-board.example/jordan-ashworth#reviews", "snippet": "Three complaints filed.", "position": 3},
+    {"title": "Broken row without a link", "snippet": "dropped by the normalizer", "position": 4}
+  ],
+  "peopleAlsoAsk": [
+    {"question": "Who is Jordan Ashworth?", "snippet": "A fictional person.", "title": "Jordan Ashworth", "link": "https://jordanashworth.example/about"}
+  ],
+  "relatedSearches": [{"query": "jordan ashworth reviews"}],
+  "credits": 1
+}

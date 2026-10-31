@@ -43,18 +43,13 @@ from urllib.parse import urlparse
 
 from config.apify_config import BING_SEARCH_SCRAPER, GOOGLE_SEARCH_SCRAPER
 from database.base import strip_tracking
+from serp.base import DEVICES, ENGINE_NOT_CONFIGURED_MSG  # noqa: F401 -- re-exported
 
-# Readable message reused by ApifyRunner.search (1.1) and by any consumer
-# of outcome["warnings"]/engine_runs -- single source of truth for the
-# exact text.
-ENGINE_NOT_CONFIGURED_MSG = "engine not configured yet"
-
-# Supported devices (1.3, mobile/desktop split): single whitelist
-# consumed by ApifyRunner.search (defensive clamp), Database.
-# get_results_filtered (?device= filter) and dashboard.main (radios of
-# /search_page, chip of /results) -- same pattern as ACTORS.keys() for
-# `engine`.
-VALID_DEVICES = ("desktop", "mobile")
+# Supported devices (1.3, mobile/desktop split): the app-wide vocabulary
+# now lives in serp.base.DEVICES; this name stays for the existing
+# imports (Database.get_results_filtered, results/api_v1 filters). Which
+# devices an install can SEARCH is serp.registry.valid_devices().
+VALID_DEVICES = DEVICES
 
 # RETIRED (F4 wrap-up, fix 1.3→HTML snapshot): "apify~screenshot-url" is
 # NO LONGER USED -- two real live runs never
@@ -243,12 +238,9 @@ ACTORS: dict[str, dict[str, Any]] = {
     "youtube": {"id": None, "normalize": None},
 }
 
-# Post-F4 hardening (hardening brief, FIX 1 item 1a): whitelist of
-# engines with a REAL actor configured today (google/bing) -- different
-# from ACTORS.keys() (which also lists news/images/youtube, with no
-# actor). Used by dashboard.main to reject/filter `engines` from the
-# POST of /search and /search_multi BEFORE calling ApifyRunner.search
-# (which already skipped them best-effort, but only AFTER accepting the
-# request) -- single source of truth, same approach as
-# VALID_DEVICES/COUNTRIES.
+# Engines with a REAL Apify actor today (google/bing) -- different from
+# ACTORS.keys() (which also lists news/images/youtube, with no actor).
+# This is APIFY's set only: what the install can launch depends on the
+# active provider -- serp.registry.configured_engines() is what the search
+# form, the launch endpoints and the assistant consult.
 CONFIGURED_ENGINES = frozenset(engine for engine, entry in ACTORS.items() if entry.get("id"))

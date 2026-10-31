@@ -20,13 +20,17 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from serp.base import SerpProviderError
+
 # ENV_FILE (when set) is the same file Settings and /setup write keys to,
 # so it must also be the one loaded at startup; otherwise the repo .env.
 load_dotenv(os.getenv("ENV_FILE") or Path(__file__).resolve().parents[2] / ".env")
 
 
-class ApifyError(Exception):
-    """Communication or business error with the Apify API."""
+class ApifyError(SerpProviderError):
+    """Communication or business error with the Apify API. A
+    SerpProviderError, so one `except` covers every provider; `retryable`
+    is set by serp.apify_provider when it re-raises."""
 
 
 class ApifyClient:

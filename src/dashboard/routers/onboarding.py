@@ -5,8 +5,6 @@ selection, a system checklist, and a workspace feature guide.
 """
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from markupsafe import Markup
@@ -94,7 +92,8 @@ async def onboarding_page(request: Request):
     # legacy report_query/report_countries settings keys.
     tracked_query = db.get_tracked_query() or _PLACEHOLDER_QUERY
     tracked_countries = ",".join(db.get_tracked_countries()) or DEFAULT_COUNTRIES
-    has_apify = bool(os.getenv("APIFY_API_KEY"))
+    from serp.registry import active_provider_name
+    has_apify = bool(active_provider_name())    # any SERP provider (issue #3)
     # Same "configured" checks as Settings, the setup wizard and the senders.
     has_ai = ai_classifier.is_configured()
     info = ai_classifier.provider_info()

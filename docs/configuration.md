@@ -20,7 +20,10 @@ broken settings are:
 
 | Variable | Without it | Error when |
 |---|---|---|
-| `APIFY_API_KEY` | demo mode, no real searches (warning) | — |
+| `APIFY_API_KEY` | no Apify; demo mode if `SERPER_API_KEY` is unset too (warning) | — |
+| `SERPER_API_KEY` | no Serper.dev; demo mode if `APIFY_API_KEY` is unset too (warning) | — |
+| `SERP_PROVIDER` | auto: `apify` if `APIFY_API_KEY` is set, else `serper` if `SERPER_API_KEY` is set | — (warning if unknown, or if the chosen provider's key is missing: no fallback, searches are disabled) |
+| `SERPER_USD_PER_1K` | `1.00`: the USD per 1,000 Serper.dev credits used to *estimate* its spend for the budget (Serper bills credits; Starter pack $1.00, down to $0.30) | — (warning if not a number ≥ 0) |
 | `AUTH_USER` / `AUTH_PASS` | no env admin: the first visit creates the admin account | only one of the two is set (warning if `AUTH_PASS` is under 12 characters) |
 | `ALLOW_NO_AUTH` | sign-in required | `HOST` is not a loopback address (also with `SKIP_CONFIG_CHECK`; local demos only) |
 | `FORCE_HTTPS` | no redirect (fine on `127.0.0.1`) | — (warning if `HOST` is not loopback and it's unset); see [Deploying behind HTTPS](deployment.md#deploying-behind-https) |
@@ -51,7 +54,7 @@ broken settings are:
 ## Going from the demo to real data
 
 The demo runs and their alerts and evidence stay in the database when you
-add a real Apify key. To start clean, stop the app, delete
+add a real SERP provider key (Apify or Serper.dev). To start clean, stop the app, delete
 `data/seo_dashboard.db` and `data/evidence/`, then start the server
 directly with `.venv/bin/uvicorn dashboard.main:app --app-dir src --port 8000`
 (the new database has no accounts, so the first visit asks you to create

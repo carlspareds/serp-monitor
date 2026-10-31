@@ -7,9 +7,16 @@ in the main README; this file is the reference.
 
 ## What it does
 
-- **Searches** Google (desktop and mobile) and Bing (desktop only) through
-  Apify's hosted scraper actors, across the countries you pick, on demand
-  from Results → New search (a dialog; progress follows in a side panel). The only *scheduled* search
+- **Searches** Google and Bing through a hosted SERP provider of your
+  choice, across the countries you pick, on demand from Results → New
+  search (a dialog; progress follows in a side panel). Two providers are
+  built in (`src/serp/`): **Apify** (Google desktop and mobile, Bing
+  desktop, through its scraper actors) and **Serper.dev** (Google desktop
+  only, cheaper and faster, prepaid credits). Add either key in Settings →
+  Search or the setup wizard; with both saved, the Provider card picks the
+  one searches run through (`SERP_PROVIDER`; Auto takes Apify, else
+  Serper.dev). The engines and devices offered by New search follow the
+  active provider. The only *scheduled* search
   is the weekly report: Monday 08:00 UTC by default (editable in Settings →
   General → Scheduling), Google desktop, the tracked name of every active,
   non-demo subject (see [Projects and subjects](projects-and-subjects.md)). The scheduler
@@ -23,13 +30,14 @@ in the main README; this file is the reference.
   overwritten by later bulk reclassification.
 - **Alerts** on stored data: a negative-result threshold per country
   (weighted by severity), a URL that is newly negative compared with the
-  previous run, a tracked negative URL dropping out of the results, Apify
+  previous run, a tracked negative URL dropping out of the results, the monthly SERP
   budget reached, a scheduled job missing its window, and an overdue note.
   These rules run after a weekly-report run, in a daily 09:00 UTC check
   over what is already stored, and from a manual button on `/alerts`. An
   on-demand search does not run them itself, except two that can fire on
   any search: a tracked negative URL dropping out (`url_gone`) and the
-  Apify budget (`apify_budget`). There is no ranking-drop alert. Alerts go
+  SERP budget (`apify_budget`, counted across every provider; the kind keeps
+  its original name). There is no ranking-drop alert. Alerts go
   to email, Telegram, Slack, or [ntfy](https://ntfy.sh) according to a
   per-severity routing table on the Alerts page (`/alerts#routing`; by
   default, `warning` alerts go to email only).
@@ -114,7 +122,7 @@ Domains in Settings, so bookmarks keep working.
 
 ## In-app pages worth knowing
 
-- `/setup`, a setup wizard: Apify key, optional integrations (AI provider,
+- `/setup`, a setup wizard: a SERP provider key (Apify or Serper.dev), optional integrations (AI provider,
   email, Telegram, Slack, ntfy), the admin account (already done if you
   created it on the first visit; it can't be skipped), and the tracked
   name. The other steps are skippable and the wizard resumes where you
@@ -124,4 +132,4 @@ Domains in Settings, so bookmarks keep working.
 - `/onboarding`, the Getting started guide: a checklist that reflects what
   is actually configured.
 
-A demo-mode banner stays on every page until a real Apify key is set.
+A demo-mode banner stays on every page until a real SERP provider key (Apify or Serper.dev) is set.

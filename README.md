@@ -36,7 +36,7 @@ The images are regenerated from a freshly seeded database by
 
 ## What it does
 
-- **Searches** Google (desktop and mobile) and Bing (desktop) through hosted SERP providers ([Apify](https://apify.com) actors), per country, on demand or as a weekly scheduled run.
+- **Searches** Google (desktop and mobile) and Bing (desktop) through hosted SERP providers ([Apify](https://apify.com) actors or [Serper.dev](https://serper.dev), Google desktop only), per country, on demand or as a weekly scheduled run.
 - **Labels** every result with rules (your domains, a blacklist, negative keywords) and sends what the rules can't decide to a human review queue; a person's verdict is final.
 - **Alerts** on stored data (negative threshold per country, newly negative URL, tracked URL gone, budget, missed job, overdue note) to email, Telegram, Slack or ntfy, routed per severity.
 - **Captures evidence**: a copy of each newly negative page with its SHA-256 stored alongside, so you can tell whether it changed since.
@@ -75,7 +75,7 @@ clients only, and ignores it as soon as an account exists).
 The demo needs no API keys: four weekly US runs for the fictional Jordan
 Ashworth, with results in the review queue, alerts, evidence snapshots,
 timeline events and notes ([`DATA.md`](DATA.md) lists them). A demo-mode
-banner stays on every page until a real Apify key is set; `/setup` (the
+banner stays on every page until a real SERP provider key (Apify or Serper.dev) is set; `/setup` (the
 wizard) and `/onboarding` (the checklist) guide the rest, see
 [`docs/features.md`](docs/features.md#in-app-pages-worth-knowing).
 `make check` validates `.env` without starting anything (one OK / WARN /
@@ -96,7 +96,7 @@ loads the demo. Env precedence, `TRUSTED_PROXIES` and HTTPS in
 
 ### From the demo to real data
 
-Demo runs stay in the database when you add a real Apify key. To start clean,
+Demo runs stay in the database when you add a real provider key. To start clean,
 stop the app, delete `data/seo_dashboard.db` and `data/evidence/`, and start
 the server directly (`.venv/bin/uvicorn dashboard.main:app --app-dir src --port 8000`;
 `make run` would re-seed). Also edit `config/positive_domains.py`, hardcoded to
@@ -138,7 +138,7 @@ home of New search, Review, Compare, Reports and the AI checks. The toolbar open
 
 | Tool | Opens as | What it does |
 | --- | --- | --- |
-| New search | dialog → side panel | Pick the subject, countries and (when several are configured) engines; the search runs in the background and the side panel shows one status box: what it is doing now ("Searching Google in the United Kingdom (2 of 6)…", "Waiting for Apify… 0:35", "Checking same-name results with AI…"), a progress bar, the elapsed time and the countries and engines on one line; the per-country steps are under a collapsed Details (opened by itself when one fails). "Run in background" closes the panel (the top-bar chip keeps track); "View results" switches to that subject. Disabled, with a link to Settings → Search, until an Apify key is set. |
+| New search | dialog → side panel | Pick the subject, countries and (when several are configured) engines; the search runs in the background and the side panel shows one status box: what it is doing now ("Searching Google in the United Kingdom (2 of 6)…", "Waiting for Apify… 0:35", "Checking same-name results with AI…"), a progress bar, the elapsed time and the countries and engines on one line; the per-country steps are under a collapsed Details (opened by itself when one fails). "Run in background" closes the panel (the top-bar chip keeps track); "View results" switches to that subject. Disabled, with a link to Settings → Search, until a SERP provider key (Apify or Serper.dev) is set. |
 | Review | dialog | One uncertain result at a time ("3 of 7", progress bar): Positive / Negative / Neutral / Not this person (keys 1-4), Skip. Your verdict is final: rules and AI never overwrite it. |
 | Compare | dialog | Older run A vs newer run B of a country: entered, left, moved, label changes. |
 | Runs | side panel | "Running now" (the subject's searches in progress, each opens its progress panel), then every run with its counts; open one, compare it with the previous one, delete it (admins). |
@@ -182,12 +182,12 @@ change, tracked on the [milestones page](https://github.com/carlspareds/serp-mon
   while the process is running; nothing checks database integrity or whether the
   notification dispatcher is actually delivering. Next: nightly backup with a tested
   restore [#6](https://github.com/carlspareds/serp-monitor/issues/6), foreign keys and a weekly `integrity_check` [#7](https://github.com/carlspareds/serp-monitor/issues/7).
-- **Needs an Apify account for anything real.** Nothing here scrapes Google or Bing
+- **Needs an Apify or Serper.dev account for anything real.** Nothing here scrapes Google or Bing
   directly; without a key you only see the synthetic demo, and rank data is only as
-  good as Apify's actors staying in sync with the engines' page structure. Bing has
-  no mobile mode, and the Google mobile option passes an actor input key that hasn't
+  good as the provider staying in sync with the engines' page structure. Bing (Apify only) has
+  no mobile mode, Serper.dev is Google desktop only, and the Google mobile option passes an Apify actor input key that hasn't
   been verified against a live run. Scraping success rate and live search latency
-  aren't measured for the same reason; `evals/README.md` lists what is. Next: pluggable providers, [#3](https://github.com/carlspareds/serp-monitor/issues/3).
+  aren't measured for the same reason; `evals/README.md` lists what is. Next: a DataForSEO provider, [#3](https://github.com/carlspareds/serp-monitor/issues/3).
 - **No ranking-drop alert.** Alerts are about labels and URLs that appear or
   vanish, not positions. Next: tracked keywords, position history and a
   rank-drop alert, [#4](https://github.com/carlspareds/serp-monitor/issues/4).

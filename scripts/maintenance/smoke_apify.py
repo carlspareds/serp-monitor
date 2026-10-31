@@ -20,13 +20,14 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from apify.client import ApifyError
-from apify.runner import ApifyRunner
 from database.models import Database
 from processing.classifier import classify_batch, get_summary
+from serp.apify_provider import ApifyProvider
+from serp.runner import SerpRunner
 
 
 def main():
-    runner = ApifyRunner()
+    runner = SerpRunner(provider=ApifyProvider())   # Apify explicitly, whatever SERP_PROVIDER says
     # Same resolution as dashboard.deps (`or`, not getenv's default: a blank
     # DB_PATH= in .env must fall back too). apify.client already ran load_dotenv().
     db = Database(db_path=os.getenv("DB_PATH") or str(project_root / "data" / "seo_dashboard.db"))

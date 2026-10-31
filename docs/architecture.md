@@ -25,7 +25,8 @@ src/
   auth/        password hashing and policy
   common/      config check, redaction, validation, encryption, network guard
   assistant/   the in-app assistant (tools, model harness)
-  apify/       Apify actor client + per-engine result normalizers
+  serp/        SERP provider contract, registry, runner; Apify and Serper.dev adapters
+  apify/       Apify REST client + actor registry and per-engine normalizers
   processing/  classification, alerts, diffing, evidence capture
   notify/      email / Telegram / Slack / ntfy senders
   scheduler/   embedded APScheduler jobs + watchdog
@@ -48,7 +49,7 @@ dialogs, side panels, job status): [`ui-architecture.md`](ui-architecture.md).
 **Where data goes.** Everything is stored locally in the SQLite file and
 `data/evidence/`. Data leaves the machine in these cases:
 
-- Apify, for every search (the query, country, and engine).
+- The SERP provider (Apify or Serper.dev), for every search (the query, country, and engine).
 - The AI provider, if one is set (Gemini or an OpenAI-compatible API):
   result titles, URLs, and snippets for the AI features listed in
   [`features.md`](features.md). A

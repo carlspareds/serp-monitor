@@ -26,7 +26,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
-from apify.actors import ACTORS, CONFIGURED_ENGINES, VALID_DEVICES
+from apify.actors import ACTORS
 from common.money import run_cost_phrase
 from config.apify_config import lang_for
 from config.positive_domains import merged_with
@@ -58,6 +58,12 @@ from report.multi_country import (
     failed_engine_state,
     persist_engine_run,
     run_multi_country,
+)
+from serp.registry import (
+    active_provider_name,
+    configured_engines,
+    provider_label,
+    valid_devices,
 )
 
 router = APIRouter()
@@ -183,7 +189,8 @@ def search_form_html(subject: dict | None = None, error: str = "",
         f"<label><input type='checkbox' name='countries' value='{_esc(c)}'"
         f"{' checked' if c in chosen else ''}> {_esc(c.upper())}</label>"
         for c in universe)
-    engines = [e for e in ACTORS if e in CONFIGURED_ENGINES]
+    supported = configured_engines()
+    engines = [e for e in ACTORS if e in supported]
     chosen_eng = engines_sel if engines_sel is not None else (["google"] if "google" in engines else engines[:1])
     engine_field = ""
     if len(engines) > 1:
@@ -193,19 +200,20 @@ def search_form_html(subject: dict | None = None, error: str = "",
         engine_field = f"<div class='field'><span class='label'>Engines</span><div class='checks'>{boxes}</div></div>"
     else:
         engine_field = "".join(f"<input type='hidden' name='engines' value='{_esc(e)}'>" for e in engines)
-    devices = "".join(f"<option value='{d}'>{d.title()}</option>" for d in VALID_DEVICES)
+    devices = "".join(f"<option value='{d}'>{d.title()}</option>" for d in valid_devices())
     per_run, measured = _avg_run_cost(sdb)
     engine_name = engines[0].title() if len(engines) == 1 else "one engine"
+    plan = provider_label(active_provider_name()) or "Apify"
     cost = (f"One country with {engine_name} takes about 20 to 90 seconds and costs "
-            f"{run_cost_phrase(per_run)} on your Apify plan{'' if measured else ' (rough estimate)'}. "
+            f"{run_cost_phrase(per_run)} on your {plan} plan{'' if measured else ' (rough estimate)'}. "
             "Each extra country or engine adds the same.")
     query = (subject.get("query") or "").strip()
     blockers = []
     if is_demo_mode():
         link = ("<a href='/settings#search'>add it in Settings → Search</a>" if v.is_admin
                 else "ask an admin to add it in Settings → Search")
-        blockers.append(f"<div class='hint hint-warn' role='status'><b>Needs an Apify key.</b> "
-                        f"Searches use your Apify account: {link}.</div>")
+        blockers.append("<div class='hint hint-warn' role='status'><b>Needs a search provider key "
+                        f"(Apify or Serper.dev).</b> Searches use your own account: {link}.</div>")
     if not v.can_write:
         blockers.append("<div class='hint' role='status'>Your account is read-only, so it can't "
                         "start searches.</div>")
@@ -297,7 +305,7 @@ async def run_search(request: Request, query: str = Form("", max_length=200), co
     busy = _check_capacity(jobs)
     if busy:
         return _search_error(busy, subject)
-    device = device if device in VALID_DEVICES else "desktop"
+    device = device if device in valid_devices() else "desktop"
 
     valid_engines = list(dict.fromkeys(valid_engines))
     job_id = jobs.create(
@@ -392,7 +400,7 @@ async def search_multi(request: Request, query: str = Form("", max_length=200), 
     busy = _check_capacity(jobs)
     if busy:
         return _search_error(busy, subject, countries, valid_engines)
-    device = device if device in VALID_DEVICES else "desktop"
+    device = device if device in valid_devices() else "desktop"
 
     valid_engines = list(dict.fromkeys(valid_engines))
     countries = list(dict.fromkeys(countries))

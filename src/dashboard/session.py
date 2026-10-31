@@ -101,8 +101,10 @@ def needs_admin_setup() -> bool:
 
 
 def is_demo_mode() -> bool:
-    """No real Apify key configured -- every result on screen is synthetic demo data."""
-    return not bool(os.getenv("APIFY_API_KEY"))
+    """No SERP provider configured (no Apify or Serper.dev key, see
+    serp.registry) -- every result on screen is synthetic demo data."""
+    from serp.registry import active_provider_name
+    return not active_provider_name()
 
 
 def demo_mode_banner() -> str:

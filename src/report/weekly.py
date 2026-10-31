@@ -26,6 +26,8 @@ import html
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Name kept (tests patch report.weekly.ApifyRunner): it is serp.runner.SerpRunner
+# over the ACTIVE provider, not necessarily Apify.
 from apify.runner import ApifyRunner
 from config.positive_domains import merged_with
 from database.base import subject_scope
@@ -131,7 +133,7 @@ def run_alert_checks_scheduled(db) -> dict:
 
 def run_scheduled(db, runner_factory=None) -> dict:
     """`weekly_report` job: run() for every scheduled subject (demo subjects
-    never get paid scheduled searches). `runner_factory` builds the Apify
+    never get paid scheduled searches). `runner_factory` builds the SERP
     runner (tests pass a fake)."""
     return _run_per_subject(db, lambda sdb: run(db=sdb, runner=runner_factory() if runner_factory else None),
                             "weekly_report")
