@@ -21,15 +21,16 @@ otherwise.
 ## Isolated demo instance
 
 Never use the repo `.env` or real keys. Start a throwaway instance with its
-own database, `.env` and port, on loopback only (`ALLOW_NO_AUTH=1` is refused
-on any other host):
+own database, `.env` and port, on loopback only. Keep both `HOST` and uvicorn's
+`--host` at 127.0.0.1: the startup check refuses `ALLOW_NO_AUTH=1` only by
+the `HOST` variable, not by the address uvicorn binds:
 
 ```bash
 RUN=$(mktemp -d)
 : > "$RUN/.env"
 export DB_PATH="$RUN/seo_dashboard.db" ENV_FILE="$RUN/.env" \
        DISABLE_SCHEDULER=1 ALLOW_NO_AUTH=1 HOST=127.0.0.1 \
-       APIFY_API_KEY= LLM_PROVIDER= SMTP_HOST=
+       APIFY_API_KEY= SERPER_API_KEY= SERP_PROVIDER= LLM_PROVIDER= SMTP_HOST=
 .venv/bin/python scripts/seed_demo_data.py
 .venv/bin/uvicorn dashboard.main:app --app-dir src --host 127.0.0.1 --port 8791
 ```

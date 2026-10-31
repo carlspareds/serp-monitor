@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `AGENTS.md` and `docs/verification/` follow the provider split: providers
+  live in `src/serp/`, and the demo command blanks `SERPER_API_KEY` and
+  `SERP_PROVIDER` so a key in the shell can't run paid searches.
 - The monthly budget and its alert count every provider; the alert kind
   stays `apify_budget` (stored rows) but reads "SERP monthly spend", and
   the Settings field is "Monthly SERP budget". Demo mode now means "no
