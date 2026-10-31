@@ -11,7 +11,7 @@ README explains what the app does; this file explains how to change it.
 | Database (SQLite, no ORM) | `src/database/` (`schema.py`, `migrations.py`) |
 | Classification, diff, evidence, alerts | `src/processing/` |
 | Reports and exports | `src/export/`, `src/report/` |
-| Search providers | `src/apify/` |
+| Search providers | `src/serp/` (contract, registry, runner, adapters); Apify actors in `src/apify/` |
 | Front end | `static/app.js`, `static/style.css`, `templates/` |
 | Tests, evals, decisions | `tests/`, `evals/`, `docs/adr/` |
 
